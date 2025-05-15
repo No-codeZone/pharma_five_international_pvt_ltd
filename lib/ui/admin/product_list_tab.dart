@@ -9,7 +9,10 @@ import 'package:fluttertoast/fluttertoast.dart';
 import 'package:lottie/lottie.dart';
 import 'package:pharma_five/service/api_service.dart';
 import 'package:pharma_five/ui/admin/product_details_screen.dart';
+import 'package:pharma_five/ui/admin/product_details_screen_admin.dart';
 import 'package:pharma_five/ui/admin/widget/bulk_upload_widget.dart';
+import '../../model/get_product_listing_response_model.dart';
+import '../../model/get_product_more_response_model.dart';
 import '../../model/product_search_listing_response_model.dart';
 import 'package:http/http.dart' as http;
 import 'package:path_provider/path_provider.dart';
@@ -24,10 +27,9 @@ class ProductListTab extends StatefulWidget {
   @override
   State<ProductListTab> createState() => _ProductListTabState();
 }
-
 class _ProductListTabState extends State<ProductListTab> {
   final ApiService _apiService = ApiService();
-  final TextEditingController _searchController = TextEditingController();
+  // final TextEditingController _searchController = TextEditingController();
   final TextEditingController _medicineNameEditController = TextEditingController();
   final TextEditingController _genericNameEditController = TextEditingController();
   final TextEditingController _manufacturerEditController = TextEditingController();
@@ -38,8 +40,10 @@ class _ProductListTabState extends State<ProductListTab> {
   final TextEditingController _indicationsAddController = TextEditingController();
 
   // Change this type to match what your API returns
-  List<Products> products = [];
-  List<Products> filteredProducts = [];
+  List<GetProducts> products = [];
+  List<GetProducts> filteredProducts = [];
+  final int _itemsPerPage = 10;
+  late final FocusNode _searchFocusNode;
 
   int _currentProductPage = 0;
   int _totalProductCount = 0;
@@ -57,13 +61,32 @@ class _ProductListTabState extends State<ProductListTab> {
   Timer? _searchDebounce;
   late final Function(File file) onFileSelected;
   bool _isUploadingExcel = false;
+  final TextEditingController _searchController = TextEditingController();
+  bool _isSearchLoading = false;
+  String _searchErrorMessage = '';
+  String? _selectedMedicalField;
+  bool _isProductsLoading = false; // Flag for product loading
+  String _errorMessage = ''; // Store error messages from API calls
+  List<Products> _allProducts = [];
+  List<Products> _filteredProducts = [];
+  int _currentPage = 0;
+  bool _hasMore = true;
+
+
+
 
   @override
   void initState() {
     super.initState();
     _checkInternetStatus().then((connected) {
-      if (connected) loadProducts();
+      if (connected) {
+        // Load all products by default when initializing
+        _selectedMedicalField = null;
+        loadProducts(page: 0);
+      }
     });
+
+    _searchFocusNode = FocusNode();
 
     _connectionSubscription = Connectivity().onConnectivityChanged.listen((results) async {
       final connected = results.contains(ConnectivityResult.mobile) ||
@@ -81,11 +104,62 @@ class _ProductListTabState extends State<ProductListTab> {
           backgroundColor: connected ? Colors.green : Colors.red,
         );
 
-        if (connected) await loadProducts();
+        if (connected) await loadProducts(page: 0);
       }
     });
+  }
 
-    _searchController.addListener(onSearchChanged);
+  // 2️⃣ Search method
+  Future<void> _searchProducts(String searchTerm) async {
+    if (searchTerm.trim().isEmpty) {
+      setState(() {
+        _currentProductPage = 0;
+        _searchErrorMessage = '';
+      });
+      await loadProducts(page: _currentPage);
+      return;
+    }
+
+    setState(() {
+      _isSearchLoading = true;
+      _searchErrorMessage = '';
+    });
+
+    try {
+      final result = await _apiService.searchProducts(searchTerm);
+      if (result != null && result.searchProducts != null) {
+        // ← convert SearchProducts → GetProducts
+        final converted = result.searchProducts!.map((sp) {
+          return GetProducts(
+            serialNo: sp.serialNo,
+            medicineName: sp.medicineName,
+            genericName: sp.genericName,
+          );
+        }).toList();
+
+        setState(() {
+          products = converted;
+          filteredProducts = converted;
+          _totalProductCount = result.totalCount ?? converted.length;
+          _hasMoreProduct = converted.length >= _itemsPerPage;
+          _currentProductPage = 0;
+        });
+      } else {
+        setState(() {
+          products = [];
+          filteredProducts = [];
+          _searchErrorMessage = 'No products found for “$searchTerm”';
+        });
+      }
+    } catch (e) {
+      setState(() {
+        _searchErrorMessage = 'Search error: ${e.toString()}';
+      });
+    } finally {
+      setState(() {
+        _isSearchLoading = false;
+      });
+    }
   }
 
   Future<bool> _requestStoragePermission() async {
@@ -159,6 +233,142 @@ class _ProductListTabState extends State<ProductListTab> {
     return true;
   }
 
+  Future<void> _loadProductData({int page = 0}) async {
+    setState(() {
+      _isProductsLoading = true;
+      _errorMessage = '';
+    });
+
+    try {
+      final response = await ApiService().fetchPaginatedProducts(
+        index: page,
+        limit: _itemsPerPage,
+      );
+
+      if (response != null && response.getProducts != null) {
+        // Convert GetProducts to Products
+        List<Products> convertedProducts = response.getProducts!.map((getProduct) {
+          return Products(
+            serialNo: getProduct.serialNo,
+            medicineName: getProduct.medicineName,
+            genericName: getProduct.genericName,
+          );
+        }).toList();
+
+        setState(() {
+          _allProducts = convertedProducts;
+          _filteredProducts = convertedProducts;
+          _currentPage = page;
+          _totalProductCount = response.totalCount ?? 0;
+          _hasMore = ((page + 1) * _itemsPerPage) < _totalProductCount;
+          _isProductsLoading = false;
+        });
+      } else {
+        setState(() {
+          _isProductsLoading = false;
+          // _errorMessage = 'No products found.';
+          _filteredProducts = [];
+        });
+      }
+    } catch (e) {
+      debugPrint('Error loading product data: $e');
+      setState(() {
+        _isProductsLoading = false;
+        _errorMessage = 'Failed to load products. Please try again later.';
+        _filteredProducts = [];
+      });
+    }
+  }
+
+  Future<void> _loadProductsByField(String field, {int page = 0}) async {
+    setState(() {
+      isProductLoading = true; // Use existing loading flag for consistency
+      _selectedMedicalField = field;
+      _currentPage = page;
+    });
+
+    try {
+      final resp = await _apiService.fetchProductsByField(
+        field: field,
+        index: page,
+        limit: _itemsPerPage,
+      );
+
+      if (resp?.fieldProducts != null) {
+        final converted = resp!.fieldProducts!
+            .map((f) => GetProducts(
+          serialNo: f.serialNo,
+          medicineName: f.medicineName,
+          genericName: f.genericName,
+        ))
+            .toList();
+
+        setState(() {
+          products = converted;
+          filteredProducts = converted;
+          _totalProductCount = resp.totalCount ?? converted.length;
+          _hasMoreProduct = ((page + 1) * _itemsPerPage) < _totalProductCount;
+          isProductLoading = false;
+        });
+      } else {
+        setState(() {
+          products = [];
+          filteredProducts = [];
+          _hasMoreProduct = false;
+          isProductLoading = false;
+        });
+      }
+    } catch (e) {
+      setState(() {
+        isProductLoading = false;
+        products = [];
+        filteredProducts = [];
+      });
+      _showToast("Error loading $field products: $e", isError: true);
+    }
+  }
+
+  Widget _buildMenuItem(IconData icon, String label) {
+    final isSelected = (_selectedMedicalField == null && label == "All") ||
+        (_selectedMedicalField != null && _selectedMedicalField == label);
+
+    return OutlinedButton.icon(
+      onPressed: () {
+        // clear any search text
+        _searchController.clear();
+
+        if (label == "All") {
+          setState(() {
+            _selectedMedicalField = null;
+            _currentPage = 0;
+            isProductLoading = true; // Show loader immediately
+          });
+          loadProducts(page: 0);
+        } else {
+          setState(() {
+            _selectedMedicalField = label;
+            _currentPage = 0;
+            isProductLoading = true; // Show loader immediately
+          });
+          _loadProductsByField(label, page: 0);
+        }
+      },
+      icon: Icon(icon, color: isSelected ? Colors.white : Color(0xff185794)),
+      label: Text(label,
+        style: TextStyle(
+          color: isSelected ? Colors.white : Color(0xff185794),
+          fontWeight: FontWeight.bold,
+        ),
+      ),
+      style: OutlinedButton.styleFrom(
+        backgroundColor: isSelected ? Color(0xff185794) : Colors.transparent,
+        side: const BorderSide(color: Color(0xff185794)),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(30)),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+      ),
+    );
+  }
+
   void _showPermissionPermanentlyDeniedDialog() {
     showDialog(
       context: context,
@@ -193,67 +403,64 @@ class _ProductListTabState extends State<ProductListTab> {
     }
   }
 
-  Future<void> loadProducts() async {
-    setState(() => isProductLoading = true);
+  Future<void> loadProducts({int page = 0}) async {
+    setState(() {
+      isProductLoading = true;
+      _currentPage = page;
+    });
 
     try {
-      final response = await _apiService.fetchProductListWithPagination(
-        index: _currentProductPage,
-        limit: 10,
-        search: _searchController.text.trim(),
+      final response = await _apiService.fetchPaginatedProducts(
+        index: page,
+        limit: _itemsPerPage,
       );
 
-      // Parse the products directly from the API response
-      final List<Products> productsData = List<Products>.from(response['products']);
-      final hasMore = response['hasMore'] ?? false;
+      if (response != null && response.getProducts != null) {
+        final converted = response.getProducts!
+            .map((p) => GetProducts(
+          serialNo: p.serialNo,
+          medicineName: p.medicineName,
+          genericName: p.genericName,
+        ))
+            .toList();
 
-      // Store the total count if available in the response
-      if (response.containsKey('totalCount')) {
-        _totalProductCount = response['totalCount'];
+        setState(() {
+          products = converted;
+          filteredProducts = converted;
+          _totalProductCount = response.totalCount ?? 0;
+          _hasMoreProduct = ((page + 1) * _itemsPerPage) < _totalProductCount;
+          isProductLoading = false;
+        });
+      } else {
+        setState(() {
+          products = [];
+          filteredProducts = [];
+          _hasMoreProduct = false;
+          isProductLoading = false;
+        });
       }
-
-      setState(() {
-        products = productsData;
-        filteredProducts = productsData; // Set filtered products directly from API
-        _hasMoreProduct = hasMore;
-        isProductLoading = false;
-
-        // If current page has no data and it's not the first page, go back one page
-        if (productsData.isEmpty && _currentProductPage > 0) {
-          _currentProductPage--;
-          // Don't call loadProducts() here to avoid infinite loop if server returns empty
-        }
-      });
     } catch (e) {
-      print("Error loading products: $e");
       setState(() {
         isProductLoading = false;
         products = [];
         filteredProducts = [];
       });
-      _showToast("Failed to load products: $e", isError: true);
+      _showToast("Error loading page $page: $e", isError: true);
     }
   }
 
+
   void onSearchChanged() {
-    // Don't need to do local filtering since we're going to call the API
-    // Just trigger the API call with the current search text
-
-    // Debounce the search input to prevent excessive API calls
     if (_searchDebounce?.isActive ?? false) _searchDebounce!.cancel();
-
     _searchDebounce = Timer(const Duration(milliseconds: 500), () {
-      // Reset to first page when searching
       setState(() {
         _currentProductPage = 0;
       });
-
-      // Call API with search parameter
-      loadProducts();
+      loadProducts(page: _currentPage);
     });
   }
 
-  List<Products> getPaginatedProducts() {
+  List<GetProducts> getPaginatedProducts() {
     final startIndex = _currentProductPage * 10;
     if (startIndex >= filteredProducts.length) return [];
     final endIndex = startIndex + 10;
@@ -303,9 +510,12 @@ class _ProductListTabState extends State<ProductListTab> {
 
   @override
   Widget build(BuildContext context) {
-    return _isEditingProduct
-        ? _buildEditProductScreen()
-        : adminProductListing(); // Remove _isAddingProduct condition
+    return GestureDetector(
+      onTap: () => FocusScope.of(context).unfocus(),
+      child: _isEditingProduct
+          ? _buildEditProductScreen()
+          : adminProductListing(),
+    ); // Remove _isAddingProduct condition
   }
 
   Future<void> _downloadExcelFile() async {
@@ -389,10 +599,18 @@ class _ProductListTabState extends State<ProductListTab> {
     }
   }
 
-  Widget adminProductListing() {
-    debugPrint(
-        'Rendering AWS DB product listing... Found ${products.length} products');
+  Widget _buildSearchError() {
+    if (_searchErrorMessage.isEmpty) return const SizedBox.shrink();
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+      child: Text(
+        _searchErrorMessage,
+        style: const TextStyle(color: Colors.red, fontSize: 12),
+      ),
+    );
+  }
 
+  Widget adminProductListing() {
     if (_isUploadingExcel) {
       return Center(
         child: Padding(
@@ -401,7 +619,6 @@ class _ProductListTabState extends State<ProductListTab> {
         ),
       );
     }
-
 
     return Scaffold(
       body: Container(
@@ -417,7 +634,7 @@ class _ProductListTabState extends State<ProductListTab> {
                   Padding(
                     padding: const EdgeInsets.symmetric(horizontal: 8.0),
                     child: Image.asset(
-                      "assets/images/logo_pf.png", // Replace with your actual logo path
+                      "assets/images/logo_pf.png",
                       height: 60,
                       fit: BoxFit.contain,
                     ),
@@ -432,10 +649,42 @@ class _ProductListTabState extends State<ProductListTab> {
                       height: 40,
                       padding: const EdgeInsets.symmetric(horizontal: 4),
                       child: TextField(
+                        autofocus: false,
                         controller: _searchController,
+                        textInputAction: TextInputAction.search,
+                        onSubmitted: (value) async {
+                          await _searchProducts(value);
+                          FocusScope.of(context).unfocus();
+                        },
                         decoration: InputDecoration(
-                          hintText: 'Search products...',
+                          hintText: 'Search products…',
                           prefixIcon: const Icon(Icons.search, size: 20),
+                          suffixIcon: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              if (_searchController.text.isNotEmpty)
+                                IconButton(
+                                  icon: const Icon(Icons.clear, size: 20),
+                                  onPressed: () {
+                                    _searchController.clear();
+                                    _searchProducts(''); // back to full list
+                                  },
+                                ),
+                              IconButton(
+                                icon: _isSearchLoading
+                                    ? SizedBox(
+                                  width: 20,
+                                  height: 20,
+                                  child: CircularProgressIndicator(strokeWidth: 2),
+                                )
+                                    : const Icon(Icons.search, size: 20),
+                                onPressed: () async {
+                                  await _searchProducts(_searchController.text);
+                                  FocusScope.of(context).unfocus();
+                                },
+                              ),
+                            ],
+                          ),
                           filled: true,
                           fillColor: Colors.grey[200],
                           border: OutlineInputBorder(
@@ -448,7 +697,6 @@ class _ProductListTabState extends State<ProductListTab> {
                     ),
                   ),
                   const SizedBox(width: 8),
-                  // Add Product Button
                 ],
               ),
 
@@ -494,6 +742,9 @@ class _ProductListTabState extends State<ProductListTab> {
                 ],
               ),
 
+              const SizedBox(height: 10),
+
+              _buildHorizontalMenu(),
 
               const SizedBox(height: 10),
 
@@ -502,18 +753,23 @@ class _ProductListTabState extends State<ProductListTab> {
 
               const SizedBox(height: 4),
 
+              // Show search error if present
+              _buildSearchError(),
+
               // Product List + Pull to Refresh
               Expanded(
                 child: RefreshIndicator(
                     onRefresh: () async {
-                      setState(() {
-                        isProductLoading = true;
-                      });
-                      await loadProducts();
-                      Fluttertoast.showToast(
-                        msg: "Products refreshed",
-                        backgroundColor: Colors.green,
-                      );
+                      if (_selectedMedicalField != null) {
+                        await _loadProductsByField(_selectedMedicalField!, page: _currentPage);
+                      } else {
+                        await loadProducts(page: _currentPage);
+                      }
+                      // Fluttertoast.showToast(
+                      //   msg: "Products refreshed",
+                      //   backgroundColor: Colors.green,
+                      // );
+                      _showToast("Products refreshed",isError: false);
                     },
                     color: const Color(0xff185794),
                     strokeWidth: 2.5,
@@ -529,23 +785,26 @@ class _ProductListTabState extends State<ProductListTab> {
               ),
 
               // Pagination
-              buildProductPagination(),
+              if (!isProductLoading && filteredProducts.isNotEmpty)
+                _buildPagination(),
             ],
           ),
         ),
       ),
     );
   }
+
   Widget _buildProductList() {
     return ListView.builder(
-        physics: const AlwaysScrollableScrollPhysics(),
-        itemCount: filteredProducts.length,
-        itemBuilder: (context, index) {
-          final product = filteredProducts[index];
-          return buildTableRow(index, product);
-        }
+      physics: const AlwaysScrollableScrollPhysics(),
+      itemCount: filteredProducts.length,
+      itemBuilder: (context, index) {
+        final product = filteredProducts[index];
+        return buildTableRow((_currentPage * _itemsPerPage) + index, product); // Send absolute index for proper numbering
+      },
     );
   }
+
   Widget _buildEditProductScreen() {
     return SingleChildScrollView(
       padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 20),
@@ -654,220 +913,6 @@ class _ProductListTabState extends State<ProductListTab> {
     );
   }
 
-  /*Widget _buildAddProductScreen() {
-    if (!_isConnected) {
-      return Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Lottie.asset(
-              "assets/animations/internet.json",
-              width: 250,
-              height: 250,
-            ),
-            const SizedBox(height: 16),
-            const Text(
-              'No Internet Connection',
-              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.grey),
-            ),
-          ],
-        ),
-      );
-    }
-
-    return
-      BulkUploadWidget(
-      onFileSelected: (file) async {
-        _showToast("Uploading Excel file...", isError: false);
-        final response = await _apiService.uploadBulkProductList(file);
-        _showToast(response ?? "Bulk upload completed.");
-        await Future.delayed(const Duration(seconds: 2));
-        try {
-          await loadProducts();
-        } catch (e) {
-          _showToast("Upload succeeded but failed to refresh list.", isError: true);
-        }
-      },
-    );
-
-    //   SingleChildScrollView(
-    //   padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 20),
-    //   child: Column(
-    //     crossAxisAlignment: CrossAxisAlignment.start,
-    //     children: [
-    //       Row(
-    //         children: [
-    //           Container(
-    //             width: 40,
-    //             height: 40,
-    //             decoration: BoxDecoration(
-    //               color: const Color(0xff185794),
-    //               borderRadius: BorderRadius.circular(20),
-    //               border: Border.all(color: Colors.blue.shade200, width: 3),
-    //             ),
-    //             child: IconButton(
-    //               icon: const Icon(Icons.arrow_back_ios_new, color: Colors.white, size: 18),
-    //               onPressed: () {
-    //                 setState(() => _isAddingProduct = false);
-    //               },
-    //             ),
-    //           ),
-    //           const Spacer(),
-    //           PopupMenuButton<String>(
-    //             tooltip: 'More',
-    //             onSelected: (value) {
-    //               if (value == 'clear') {
-    //                 _medicineNameAddController.clear();
-    //                 _genericNameAddController.clear();
-    //                 _manufacturerAddController.clear();
-    //                 _indicationsAddController.clear();
-    //                 _showToast("Form cleared");
-    //               }
-    //               if (value == 'close') {
-    //                 setState(() => _isAddingProduct = false);
-    //               }
-    //             },
-    //             itemBuilder: (context) => [
-    //               const PopupMenuItem(
-    //                 value: 'clear',
-    //                 child: ListTile(
-    //                   leading: Icon(Icons.clear),
-    //                   title: Text('Clear Form'),
-    //                 ),
-    //               ),
-    //               const PopupMenuItem(
-    //                 value: 'close',
-    //                 child: ListTile(
-    //                   leading: Icon(Icons.close),
-    //                   title: Text('Close Add Screen'),
-    //                 ),
-    //               ),
-    //             ],
-    //             icon: const Icon(Icons.more_vert),
-    //           ),
-    //         ],
-    //       ),
-    //       const SizedBox(height: 30),
-    //       const Center(
-    //         child: Text('Add Products', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-    //       ),
-    //       const SizedBox(height: 20),
-    //       Center(
-    //         child: Card(
-    //           elevation: 6,
-    //           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-    //           color: Colors.white,
-    //           margin: const EdgeInsets.symmetric(horizontal: 10),
-    //           child: Padding(
-    //             padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 20),
-    //             child: Column(
-    //               mainAxisSize: MainAxisSize.min,
-    //               children: [
-    //                 _buildLabeledInput("Medicine name", _medicineNameAddController),
-    //                 const SizedBox(height: 16),
-    //                 _buildLabeledInput("Generic name", _genericNameAddController),
-    //                 const SizedBox(height: 16),
-    //                 _buildLabeledInput("Manufactured By", _manufacturerAddController),
-    //                 const SizedBox(height: 16),
-    //                 _buildLabeledInput("Indications", _indicationsAddController),
-    //                 const SizedBox(height: 24),
-    //                 ElevatedButton(
-    //                   style: ElevatedButton.styleFrom(
-    //                     backgroundColor: const Color(0xff262A88),
-    //                     padding: const EdgeInsets.symmetric(horizontal: 40, vertical: 12),
-    //                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-    //                   ),
-    //                   onPressed: () async {
-    //                     final medicineName = _medicineNameAddController.text.trim();
-    //                     final genericName = _genericNameAddController.text.trim();
-    //                     final manufacturedBy = _manufacturerAddController.text.trim();
-    //                     final indication = _indicationsAddController.text.trim();
-    //
-    //                     if ([medicineName, genericName, manufacturedBy, indication].any((e) => e.isEmpty)) {
-    //                       _showToast("All fields are required", isError: true);
-    //                       return;
-    //                     }
-    //
-    //                     final isDuplicate = products.any((p) =>
-    //                     p.medicineName?.toLowerCase() == medicineName.toLowerCase() &&
-    //                         p.genericName?.toLowerCase() == genericName.toLowerCase() &&
-    //                         p.manufacturedBy?.toLowerCase() == manufacturedBy.toLowerCase() &&
-    //                         p.indication?.toLowerCase() == indication.toLowerCase());
-    //
-    //                     if (isDuplicate) {
-    //                       _showToast("Product already exists!", isError: true);
-    //                       return;
-    //                     }
-    //
-    //                     final requestModel = AddProductRequestModel(
-    //                       medicineName: medicineName,
-    //                       genericName: genericName,
-    //                       manufacturedBy: manufacturedBy,
-    //                       indication: indication,
-    //                     );
-    //
-    //                     final result = await _apiService.addProduct(
-    //                       medicineName: medicineName,
-    //                       genericName: genericName,
-    //                       manufacturedBy: manufacturedBy,
-    //                       indication: indication,
-    //                       requestModel: requestModel,
-    //                     );
-    //
-    //                     if (result != null && result['success'] == true) {
-    //                       _showToast("Product added successfully!", isError: false);
-    //                       _medicineNameAddController.clear();
-    //                       _genericNameAddController.clear();
-    //                       _manufacturerAddController.clear();
-    //                       _indicationsAddController.clear();
-    //                       setState(() => _isAddingProduct = false);
-    //                       await loadProducts();
-    //                     } else {
-    //                       _showToast(result?['message'] ?? 'Failed to add product', isError: true);
-    //                     }
-    //                   },
-    //                   child: const Text("Add", style: TextStyle(color: Colors.white)),
-    //                 ),
-    //                 const SizedBox(height: 16),
-    //                 const Text("Or"),
-    //                 const SizedBox(height: 12),
-    //                 ElevatedButton(
-    //                   onPressed: () {
-    //                     showDialog(
-    //                       context: context,
-    //                       builder: (_) =>
-    //                           BulkUploadWidget(
-    //                         onFileSelected: (file) async {
-    //                           _showToast("Uploading Excel file...", isError: false);
-    //                           final response = await _apiService.uploadBulkProductList(file);
-    //                           _showToast(response ?? "Bulk upload completed.");
-    //                           await Future.delayed(const Duration(seconds: 2));
-    //                           try {
-    //                             await loadProducts();
-    //                           } catch (e) {
-    //                             _showToast("Upload succeeded but failed to refresh list.", isError: true);
-    //                           }
-    //                         },
-    //                       ),
-    //                     );
-    //                   },
-    //                   style: ElevatedButton.styleFrom(
-    //                     backgroundColor: Colors.green.shade700,
-    //                     padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
-    //                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-    //                   ),
-    //                   child: const Text("Upload Bulk Products", style: TextStyle(color: Colors.white)),
-    //                 ),
-    //               ],
-    //             ),
-    //           ),
-    //         ),
-    //       ),
-    //     ],
-    //   ),
-    // );
-  }*/
-
   Widget _buildAddProductScreen() {
     if (!_isConnected) {
       return Center(
@@ -912,7 +957,7 @@ class _ProductListTabState extends State<ProductListTab> {
                     _showToast(response ?? "Bulk upload completed.");
                     await Future.delayed(const Duration(seconds: 2));
                     try {
-                      await loadProducts();
+                      await loadProducts(page: _currentPage);
                     } catch (e) {
                       _showToast("Upload succeeded but failed to refresh list.", isError: true);
                     }
@@ -984,7 +1029,7 @@ class _ProductListTabState extends State<ProductListTab> {
                           if (response != null) {
                             _showToast(response, isError: false);
                             await Future.delayed(const Duration(seconds: 2));
-                            await loadProducts();
+                            await loadProducts(page: _currentPage);
                           } else {
                             _showToast("No response from server.", isError: true);
                           }
@@ -1064,7 +1109,7 @@ class _ProductListTabState extends State<ProductListTab> {
   }
 
   // FIXED IMPLEMENTATION: Make the row responsive and prevent overflow
-  Widget buildTableRow(int index, Products product) {
+  Widget buildTableRow(int index, GetProducts product) {
     return Card(
       color: Colors.white,
       margin: const EdgeInsets.symmetric(vertical: 4, horizontal: 2),
@@ -1074,7 +1119,7 @@ class _ProductListTabState extends State<ProductListTab> {
           children: [
             Expanded(
               flex: 1,
-              child: Text('${(_currentProductPage * 10) + index + 1}.'),
+              child: Text('${index + 1}'), // Changed to start from 1 regardless of pagination
             ),
             Expanded(
               flex: 3,
@@ -1100,26 +1145,101 @@ class _ProductListTabState extends State<ProductListTab> {
               elevation: 10,
               iconColor: Colors.white,
               tooltip: 'Actions',
-              onSelected: (value) {
+              onSelected: (value) async{
                 if (value == 'view') {
                   // _viewProductDialog(product);
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (_) => ProductDetailsScreen(product: product),
-                    ),
-                  );
-                } else if (value == 'edit') {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (_) => EditFullProductScreen(
-                        product: UpdateProductListingRequestModel.fromJson(product.toJson()),
+                  showDialog(
+                    context: context,
+                    barrierDismissible: false,
+                    builder: (_) => AlertDialog(
+                      elevation: 0,
+                      backgroundColor: Colors.transparent,
+                      content: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Lottie.asset(
+                            'assets/animations/more_product_loading.json',
+                            width: 200,
+                            height: 200,
+                            repeat: true,
+                          ),
+                          const SizedBox(height: 12),
+                          const Text(
+                            'Product Loading...',
+                            style: TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.bold,
+                              color: Colors.white,
+                            ),
+                          ),
+                        ],
                       ),
                     ),
-                  ).then((shouldRefresh) {
-                    if (shouldRefresh == true) loadProducts();
-                  });
+                  );
+
+                  final response = await ApiService().fetchProductDetailsBySerialNo(product.serialNo ?? 0);
+
+                  Navigator.of(context).pop(); // Close Lottie loader
+
+                  if (response != null &&
+                      response.getProductsContent != null &&
+                      response.getProductsContent!.isNotEmpty) {
+                    final detailedProduct = response.getProductsContent!.first;
+
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => ProductDetailsScreenAdmin(getProductsContent: detailedProduct),
+                      ),
+                    );
+                  } else {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        content: Text('Failed to load product details.'),
+                        backgroundColor: Colors.red,
+                      ),
+                    );
+                  }
+                } else if (value == 'edit') {
+                  showDialog(
+                    context: context,
+                    barrierDismissible: false,
+                    builder: (_) => AlertDialog(
+                      backgroundColor: Colors.transparent,
+                      elevation: 0,
+                      content: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Lottie.asset('assets/animations/more_product_loading.json', width: 200, height: 200),
+                          const SizedBox(height: 12),
+                          const Text("Fetching Product Details...", style: TextStyle(color: Colors.white)),
+                        ],
+                      ),
+                    ),
+                  );
+
+                  final response = await ApiService().fetchProductDetailsBySerialNo(product.serialNo ?? 0);
+
+                  Navigator.pop(context); // Close the loader
+
+                  if (response != null &&
+                      response.getProductsContent != null &&
+                      response.getProductsContent!.isNotEmpty) {
+                    final detailedProduct = response.getProductsContent!.first;
+
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => EditFullProductScreen(
+                          product: UpdateProductListingRequestModel.fromJson(detailedProduct.toJson()),
+                        ),
+                      ),
+                    ).then((shouldRefresh) {
+                      if (shouldRefresh == true) loadProducts(page: _currentProductPage);
+                    });
+                  } else {
+                    _showToast("Failed to load full product details", isError: true);
+                  }
                 }
                 else if (value == 'delete') {
                   _showDeleteConfirmationDialog(product);
@@ -1129,22 +1249,22 @@ class _ProductListTabState extends State<ProductListTab> {
                 const PopupMenuItem(
                   value: 'view',
                   child: ListTile(
-                    leading: Icon(Icons.visibility),
-                    title: Text('View'),
+                    leading: Icon(Icons.visibility,color: Colors.white,),
+                    title: Text('View',style: TextStyle(color: Colors.white)),
                   ),
                 ),
                 const PopupMenuItem(
                   value: 'edit',
                   child: ListTile(
-                    leading: Icon(Icons.edit),
-                    title: Text('Edit'),
+                    leading: Icon(Icons.edit,color: Colors.white,),
+                    title: Text('Edit',style: TextStyle(color: Colors.white)),
                   ),
                 ),
                 const PopupMenuItem(
                   value: 'delete',
                   child: ListTile(
                     leading: Icon(Icons.delete, color: Colors.red),
-                    title: Text('Delete', style: TextStyle(color: Colors.red)),
+                    title: Text('Delete', style: TextStyle(color: Colors.white)),
                   ),
                 ),
               ],
@@ -1156,7 +1276,25 @@ class _ProductListTabState extends State<ProductListTab> {
     );
   }
 
-  void _showDeleteConfirmationDialog(Products product) {
+  Widget _buildHorizontalMenu() {
+    return SingleChildScrollView(
+      scrollDirection: Axis.horizontal,
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      child: Row(
+        children: [
+          _buildMenuItem(Icons.dashboard, "All"),
+          const SizedBox(width: 12),
+          _buildMenuItem(Icons.biotech, "Oncology"),
+          const SizedBox(width: 12),
+          _buildMenuItem(Icons.bloodtype, "Hematology"),
+          const SizedBox(width: 12),
+          _buildMenuItem(Icons.child_care, "Paediatric Oncology"),
+        ],
+      ),
+    );
+  }
+
+  void _showDeleteConfirmationDialog(GetProducts product) {
     showDialog(
       context: context,
       builder: (BuildContext context) {
@@ -1179,10 +1317,10 @@ class _ProductListTabState extends State<ProductListTab> {
                 'Generic Name: ${product.genericName ?? "N/A"}',
                 style: const TextStyle(fontSize: 14),
               ),
-              Text(
-                'Manufacturer: ${product.manufacturedBy ?? "N/A"}',
-                style: const TextStyle(fontSize: 14),
-              ),
+              // Text(
+              //   'Manufacturer: ${product.manufacturedBy ?? "N/A"}',
+              //   style: const TextStyle(fontSize: 14),
+              // ),
             ],
           ),
           actions: [
@@ -1209,7 +1347,7 @@ class _ProductListTabState extends State<ProductListTab> {
   }
 
 // Add this method to perform the actual delete operation
-  Future<void> _deleteProduct(Products product) async {
+  Future<void> _deleteProduct(GetProducts product) async {
     if (product.serialNo == null) {
       _showToast("Product ID is missing", isError: true);
       return;
@@ -1224,7 +1362,7 @@ class _ProductListTabState extends State<ProductListTab> {
 
       if (result['success'] == true) {
         _showToast("Product deleted successfully");
-        await loadProducts(); // Refresh the product list
+        await loadProducts(page: _currentPage); // Refresh the product list
       } else {
         _showToast(result['message'] ?? "Failed to delete product", isError: true);
       }
@@ -1237,7 +1375,7 @@ class _ProductListTabState extends State<ProductListTab> {
     }
   }
 
-  void _viewProductDialog(Products product) {
+  void _viewProductDialog(GetProducts product) {
     showDialog(
       context: context,
       builder: (_) => AlertDialog(
@@ -1248,8 +1386,8 @@ class _ProductListTabState extends State<ProductListTab> {
           children: [
             Text("Medicine: ${product.medicineName ?? '-'}"),
             Text("Generic: ${product.genericName ?? '-'}"),
-            Text("Manufactured By: ${product.manufacturedBy ?? '-'}"),
-            Text("Indication: ${product.indication ?? '-'}"),
+            // Text("Manufactured By: ${product.manufacturedBy ?? '-'}"),
+            // Text("Indication: ${product.indication ?? '-'}"),
           ],
         ),
         actions: [
@@ -1262,7 +1400,7 @@ class _ProductListTabState extends State<ProductListTab> {
     );
   }
 
-  void _editProduct(Products product) {
+  void _editProduct(GetProductsContent product) {
     setState(() {
       _selectedProductForEdit = {
         'serialNo': product.serialNo?.toString() ?? '',
@@ -1327,7 +1465,7 @@ class _ProductListTabState extends State<ProductListTab> {
                   setState(() {
                     _currentProductPage = _currentProductPage - 1;
                   });
-                  loadProducts();
+                  loadProducts(page: _currentPage);
                 },
                 borderRadius: BorderRadius.circular(6),
                 splashColor: Colors.grey.shade300,
@@ -1359,7 +1497,7 @@ class _ProductListTabState extends State<ProductListTab> {
                     setState(() {
                       _currentProductPage = pageNumber;
                     });
-                    loadProducts();
+                    loadProducts(page: _currentPage);
                   }
                 },
                 borderRadius: BorderRadius.circular(6),
@@ -1393,7 +1531,7 @@ class _ProductListTabState extends State<ProductListTab> {
                   setState(() {
                     _currentProductPage = _currentProductPage + 1;
                   });
-                  loadProducts();
+                  loadProducts(page: _currentPage);
                 },
                 borderRadius: BorderRadius.circular(6),
                 splashColor: Colors.grey.shade300,
@@ -1493,4 +1631,128 @@ class _ProductListTabState extends State<ProductListTab> {
       ],
     );
   }
+  Widget _buildPagination() {
+    // Don't show pagination if there are no products on first page
+    if (filteredProducts.isEmpty && _currentPage == 0) {
+      return const SizedBox.shrink();
+    }
+
+    // Calculate total pages based on total product count
+    final int totalPages = (_totalProductCount / _itemsPerPage).ceil();
+
+    // Use appropriate range of pages to show
+    int totalPagesToShow = 5; // Show max 5 page buttons at a time
+    int startPage = max(0, min(_currentPage - 2, totalPages - totalPagesToShow));
+    int endPage = min(startPage + totalPagesToShow - 1, totalPages - 1);
+
+    // Ensure we don't show negative pages
+    endPage = max(0, min(endPage, totalPages - 1));
+
+    // Handle responsive sizes
+    final double screenWidth = MediaQuery.of(context).size.width;
+    final bool isSmallScreen = screenWidth < 400;
+    final bool isTablet = screenWidth >= 600;
+
+    final double buttonSize = isSmallScreen ? 26 : isTablet ? 36 : 30;
+    final double fontSize = isSmallScreen ? 13 : isTablet ? 17 : 15;
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 10),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          // Previous page button
+          if (_currentPage > 0)
+            InkWell(
+              onTap: () {
+                final prevPage = _currentPage - 1;
+                if (_selectedMedicalField != null) {
+                  _loadProductsByField(_selectedMedicalField!, page: prevPage);
+                } else {
+                  loadProducts(page: prevPage);
+                }
+              },
+              borderRadius: BorderRadius.circular(6),
+              splashColor: Colors.grey.shade300,
+              child: Container(
+                width: buttonSize,
+                height: buttonSize,
+                alignment: Alignment.center,
+                child: Icon(
+                  Icons.chevron_left,
+                  color: const Color(0xff185794),
+                  size: fontSize + 2,
+                ),
+              ),
+            ),
+
+          // Page number buttons
+          ...List.generate(endPage - startPage + 1, (index) {
+            final int pageNumber = startPage + index;
+            final bool isSelected = pageNumber == _currentPage;
+
+            return InkWell(
+              onTap: () {
+                if (_currentPage != pageNumber) {
+                  if (_selectedMedicalField != null) {
+                    _loadProductsByField(_selectedMedicalField!, page: pageNumber);
+                  } else {
+                    loadProducts(page: pageNumber);
+                  }
+                }
+              },
+              borderRadius: BorderRadius.circular(6),
+              splashColor: Colors.grey.shade300,
+              child: Container(
+                width: buttonSize,
+                height: buttonSize,
+                margin: const EdgeInsets.symmetric(horizontal: 4),
+                alignment: Alignment.center,
+                decoration: isSelected
+                    ? BoxDecoration(
+                  color: const Color(0xff185794).withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(6),
+                )
+                    : null,
+                child: Text(
+                  '${pageNumber + 1}',
+                  style: TextStyle(
+                    color: const Color(0xff185794),
+                    fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+                    fontSize: fontSize,
+                  ),
+                ),
+              ),
+            );
+          }),
+
+          // Next page button - only if there are more products
+          if (_currentPage < totalPages - 1 && _hasMore)
+            InkWell(
+              onTap: () {
+                final nextPage = _currentPage + 1;
+                if (_selectedMedicalField != null) {
+                  _loadProductsByField(_selectedMedicalField!, page: nextPage);
+                } else {
+                  loadProducts(page: nextPage);
+                }
+              },
+              borderRadius: BorderRadius.circular(6),
+              splashColor: Colors.grey.shade300,
+              child: Container(
+                width: buttonSize,
+                height: buttonSize,
+                alignment: Alignment.center,
+                child: Icon(
+                  Icons.chevron_right,
+                  color: const Color(0xff185794),
+                  size: fontSize + 2,
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
 }

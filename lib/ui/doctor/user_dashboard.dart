@@ -12,6 +12,7 @@ import 'package:permission_handler/permission_handler.dart';
 import 'package:pharma_five/ui/login_screen.dart';
 
 import '../../helper/shared_preferences.dart';
+import '../../model/get_product_search_model.dart';
 import '../../model/product_search_listing_response_model.dart';
 import '../../model/update_product_listing_request_model.dart';
 import '../../service/api_service.dart';
@@ -46,6 +47,8 @@ class _UserDashboardScreenState extends State<UserDashboardScreen>
   bool _isConnected = true;
   int _totalProductCount = 0;
   bool _isUploadingExcel = false;
+  int? _userSno;
+  String? _selectedMedicalField;
 
 
   @override
@@ -94,6 +97,7 @@ class _UserDashboardScreenState extends State<UserDashboardScreen>
     await SharedPreferenceHelper.init();
     final isLoggedIn = await SharedPreferenceHelper.isLoggedIn();
     final email = await SharedPreferenceHelper.getUserEmail();
+    _userSno = await SharedPreferenceHelper.getUserSno();
 
     if (!isLoggedIn || email == null || email.isEmpty) {
       _navigateToLogin();
@@ -200,6 +204,121 @@ class _UserDashboardScreenState extends State<UserDashboardScreen>
     );
   }
 
+  Future<void> _searchProductsFromApi(String searchTerm) async {
+    if (searchTerm.trim().isEmpty) {
+      _loadProductData(page: 0); // Load all products
+      return;
+    }
+
+    setState(() {
+      _isProductsLoading = true;
+      _errorMessage = '';
+    });
+
+    try {
+      final result = await ApiService().searchProducts(searchTerm);
+
+      if (result != null && result.searchProducts != null) {
+        // Convert SearchProducts to Products
+        final List<Products> converted = result.searchProducts!.map((searchProduct) {
+          return Products(
+            serialNo: searchProduct.serialNo,
+            medicineName: searchProduct.medicineName,
+            genericName: searchProduct.genericName,
+          );
+        }).toList();
+
+        setState(() {
+          _allProducts = converted;
+          _filteredProducts = converted;
+          _currentPage = 0;
+          _totalProductCount = result.totalCount ?? converted.length;
+          _hasMore = converted.length > _itemsPerPage;
+          _selectedMedicalField = null;
+          _isProductsLoading = false;
+        });
+      } else {
+        setState(() {
+          _filteredProducts = [];
+          _errorMessage = "No products found for '$searchTerm'";
+          _isProductsLoading = false;
+        });
+      }
+    } catch (e) {
+      debugPrint('Search failed: $e');
+      setState(() {
+        _filteredProducts = [];
+        _errorMessage = "Search error: ${e.toString()}";
+        _isProductsLoading = false;
+      });
+    }
+  }
+
+  Future<void> _loadProductsByField(String field, {int page = 0}) async {
+    setState(() {
+      _isProductsLoading = true;
+      _errorMessage = '';
+      _selectedMedicalField = field;
+    });
+
+    try {
+      final response = await ApiService().fetchProductsByField(
+        field: field,
+        index: page,  // Use the provided page parameter
+        limit: _itemsPerPage,
+      );
+
+      if (response != null && response.fieldProducts != null) {
+        final converted = response.fieldProducts!.map((f) => Products(
+          serialNo: f.serialNo,
+          medicineName: f.medicineName,
+          genericName: f.genericName,
+        )).toList();
+
+        setState(() {
+          _allProducts = converted;
+          _filteredProducts = converted;
+          _totalProductCount = response.totalCount ?? converted.length;
+          _currentPage = page;  // Update current page
+          _hasMore = ((page + 1) * _itemsPerPage) < _totalProductCount;
+          _isProductsLoading = false;
+        });
+      } else {
+        setState(() {
+          _errorMessage = 'No products found in this field.';
+          _filteredProducts = [];
+          _isProductsLoading = false;
+        });
+      }
+    } catch (e) {
+      debugPrint('Field filter error: $e');
+      setState(() {
+        _errorMessage = 'Error loading field-specific products.';
+        _isProductsLoading = false;
+      });
+    }
+  }
+
+  /*void _paginateFieldProducts(int page) {
+    final start = page * _itemsPerPage;
+    final end = min(start + _itemsPerPage, _allProducts.length);
+
+    if (start >= _allProducts.length) {
+      setState(() {
+        _filteredProducts = [];
+        _currentPage = page;
+        _hasMore = false;
+      });
+      return;
+    }
+
+    setState(() {
+      _currentPage = page;
+      _filteredProducts = _allProducts.sublist(start, end);
+      _hasMore = end < _allProducts.length;
+      _totalProductCount = _allProducts.length;
+    });
+  }*/
 
   Future<void> _downloadExcelFile() async {
     setState(() => _isLoading = true);
@@ -211,11 +330,15 @@ class _UserDashboardScreenState extends State<UserDashboardScreen>
         return;
       }
 
-      final hasPermission = await _requestStoragePermission();
+      // Check if permission is granted first
+      final hasPermission = await _checkAndRequestStoragePermission();
       if (!hasPermission) {
         setState(() => _isLoading = false);
         return;
       }
+
+      // Show downloading progress indicator
+      _showToast("Downloading Excel file...");
 
       final url = Uri.parse("http://13.49.224.44:8080/api/product/download");
       final filename = "product_list_${DateTime.now().millisecondsSinceEpoch}.xlsx";
@@ -248,9 +371,6 @@ class _UserDashboardScreenState extends State<UserDashboardScreen>
 
       final downloadPath = "${directory.path}/$filename";
 
-      // Show downloading progress indicator
-      _showToast("Downloading Excel file...");
-
       final response = await http.get(url);
 
       if (response.statusCode == 200) {
@@ -281,6 +401,252 @@ class _UserDashboardScreenState extends State<UserDashboardScreen>
       setState(() => _isLoading = false);
     }
   }
+
+  Future<bool> _checkAndRequestStoragePermission() async {
+    if (Platform.isAndroid) {
+      final deviceInfo = DeviceInfoPlugin();
+      final androidInfo = await deviceInfo.androidInfo;
+      final sdkInt = androidInfo.version.sdkInt;
+
+      // Check permission status first
+      PermissionStatus storageStatus;
+
+      if (sdkInt >= 33) {
+        // Android 13+ needs media-specific permissions
+        storageStatus = await Permission.photos.status;
+        PermissionStatus downloadStatus = await Permission.mediaLibrary.status;
+
+        // If already granted, return true immediately
+        if (storageStatus.isGranted && downloadStatus.isGranted) {
+          return true;
+        }
+
+        // If denied previously but not permanently, show rationale before requesting again
+        if (storageStatus.isDenied || downloadStatus.isDenied) {
+          bool shouldContinue = await _showPermissionRationaleDialog(
+              "Storage Permission Required",
+              "We need permission to save the Excel file to your device. Please grant access to continue."
+          );
+
+          if (!shouldContinue) return false;
+        }
+
+        // Now request the permissions
+        storageStatus = await Permission.photos.request();
+        downloadStatus = await Permission.mediaLibrary.request();
+
+        if (storageStatus.isGranted && downloadStatus.isGranted) {
+          return true;
+        } else if (storageStatus.isPermanentlyDenied || downloadStatus.isPermanentlyDenied) {
+          _showPermissionPermanentlyDeniedDialog();
+          return false;
+        } else {
+          _showToast("Media permissions needed to download files", isError: true);
+          return false;
+        }
+      } else if (sdkInt >= 30) {
+        // Android 11-12
+        storageStatus = await Permission.storage.status;
+
+        if (storageStatus.isGranted) {
+          // Check the more powerful permission
+          final manageStatus = await Permission.manageExternalStorage.status;
+          if (manageStatus.isGranted) return true;
+
+          // If manage status is not granted but needed, show rationale and request
+          bool shouldContinue = await _showPermissionRationaleDialog(
+              "Storage Access Required",
+              "Additional storage permissions are needed for Android 11+. Please grant full storage access."
+          );
+
+          if (!shouldContinue) return false;
+
+          final requestedStatus = await Permission.manageExternalStorage.request();
+          return requestedStatus.isGranted;
+        }
+
+        // Basic storage not granted, show rationale
+        if (storageStatus.isDenied) {
+          bool shouldContinue = await _showPermissionRationaleDialog(
+              "Storage Permission Required",
+              "We need permission to save the Excel file to your device. Please grant access to continue."
+          );
+
+          if (!shouldContinue) return false;
+        }
+
+        // Request basic storage permission
+        storageStatus = await Permission.storage.request();
+
+        if (storageStatus.isGranted) {
+          // Try the more powerful permission if basic is granted
+          final manageStatus = await Permission.manageExternalStorage.request();
+          return manageStatus.isGranted;
+        } else if (storageStatus.isPermanentlyDenied) {
+          _showPermissionPermanentlyDeniedDialog();
+          return false;
+        } else {
+          _showToast("Storage permissions needed for Android 11+", isError: true);
+          return false;
+        }
+      } else {
+        // Android 10 and below
+        storageStatus = await Permission.storage.status;
+
+        if (storageStatus.isGranted) return true;
+
+        if (storageStatus.isDenied) {
+          bool shouldContinue = await _showPermissionRationaleDialog(
+              "Storage Permission Required",
+              "We need permission to save the Excel file to your device. Please grant access to continue."
+          );
+
+          if (!shouldContinue) return false;
+        }
+
+        storageStatus = await Permission.storage.request();
+
+        if (storageStatus.isGranted) {
+          return true;
+        } else if (storageStatus.isPermanentlyDenied) {
+          _showPermissionPermanentlyDeniedDialog();
+          return false;
+        } else {
+          _showToast("Storage permission needed to download files", isError: true);
+          return false;
+        }
+      }
+    }
+
+    // For iOS, request photos permission
+    if (Platform.isIOS) {
+      final status = await Permission.photos.status;
+
+      if (status.isGranted) return true;
+
+      if (status.isDenied) {
+        bool shouldContinue = await _showPermissionRationaleDialog(
+            "Photos Access Required",
+            "We need access to your Photos to save the Excel file. Please grant access to continue."
+        );
+
+        if (!shouldContinue) return false;
+      }
+
+      final requestStatus = await Permission.photos.request();
+
+      if (requestStatus.isGranted) {
+        return true;
+      } else if (requestStatus.isPermanentlyDenied) {
+        _showPermissionPermanentlyDeniedDialog();
+        return false;
+      } else {
+        _showToast("Photos access needed to save files", isError: true);
+        return false;
+      }
+    }
+
+    // Default allow for other platforms
+    return true;
+  }
+
+  Future<bool> _showPermissionRationaleDialog(String title, String message) async {
+    return (await showDialog<bool>(
+      context: context,
+      builder: (BuildContext context) {
+        return Builder(
+          builder: (BuildContext localContext) {
+            return Dialog(
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(16),
+              ),
+              child: Padding(
+                padding: const EdgeInsets.all(20),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Icon(Icons.lock, size: 48, color: Colors.orange),
+                    const SizedBox(height: 16),
+                    Text(
+                      title,
+                      style: const TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                      ),
+                      textAlign: TextAlign.center,
+                    ),
+                    const SizedBox(height: 12),
+                    Text(
+                      message,
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(fontSize: 15),
+                    ),
+                    const SizedBox(height: 24),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: ElevatedButton(
+                            onPressed: () => Navigator.of(localContext).pop(false),
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: Colors.grey.shade300,
+                              foregroundColor: Colors.black,
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(10),
+                              ),
+                            ),
+                            child: const Text("Not Now"),
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: ElevatedButton(
+                            onPressed: () => Navigator.of(localContext).pop(true),
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: const Color(0xff185794),
+                              foregroundColor: Colors.white,
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(10),
+                              ),
+                            ),
+                            child: const Text("Continue"),
+                          ),
+                        ),
+                      ],
+                    )
+                  ],
+                ),
+              ),
+            );
+          },
+        );
+      },
+    )) ?? false;
+  }
+
+  /*void _showPermissionPermanentlyDeniedDialog() {
+    showDialog(
+      context: context,
+      builder: (BuildContext context) => AlertDialog(
+        title: const Text('Permission Required'),
+        content: const Text(
+          'Storage permission is required to download files but has been permanently denied. Please enable it in app settings.',
+        ),
+        actions: <Widget>[
+          TextButton(
+            child: const Text('Cancel'),
+            onPressed: () => Navigator.of(context).pop(),
+          ),
+          TextButton(
+            child: const Text('Open Settings'),
+            onPressed: () {
+              Navigator.of(context).pop();
+              openAppSettings();
+            },
+          ),
+        ],
+      ),
+    );
+  }*/
 
   Future<bool> _requestStoragePermission() async {
     if (Platform.isAndroid) {
@@ -356,25 +722,72 @@ class _UserDashboardScreenState extends State<UserDashboardScreen>
   void _showPermissionPermanentlyDeniedDialog() {
     showDialog(
       context: context,
-      builder: (BuildContext context) => AlertDialog(
-        title: const Text('Permission Required'),
-        content: const Text(
-          'Storage permission is required to download files. Please enable it in app settings.',
-        ),
-        actions: <Widget>[
-          TextButton(
-            child: const Text('Cancel'),
-            onPressed: () => Navigator.of(context).pop(),
+      builder: (BuildContext context) {
+        return Dialog(
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16),
           ),
-          TextButton(
-            child: const Text('Open Settings'),
-            onPressed: () {
-              Navigator.of(context).pop();
-              openAppSettings();
-            },
+          child: Padding(
+            padding: const EdgeInsets.all(20),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Icon(Icons.block, size: 48, color: Colors.redAccent),
+                const SizedBox(height: 16),
+                const Text(
+                  'Permission Denied',
+                  style: TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.redAccent,
+                  ),
+                ),
+                const SizedBox(height: 12),
+                const Text(
+                  'Storage permission is required to download files but has been permanently denied.\n\nPlease enable it manually in app settings.',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(fontSize: 15),
+                ),
+                const SizedBox(height: 24),
+                Row(
+                  children: [
+                    Expanded(
+                      child: ElevatedButton(
+                        onPressed: () => Navigator.of(context).pop(),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.grey.shade300,
+                          foregroundColor: Colors.black,
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                        ),
+                        child: const Text('Cancel'),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: ElevatedButton(
+                        onPressed: () {
+                          Navigator.of(context).pop();
+                          openAppSettings();
+                        },
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.red,
+                          foregroundColor: Colors.white,
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                        ),
+                        child: const Text('Open Settings'),
+                      ),
+                    ),
+                  ],
+                )
+              ],
+            ),
           ),
-        ],
-      ),
+        );
+      },
     );
   }
 
@@ -399,35 +812,34 @@ class _UserDashboardScreenState extends State<UserDashboardScreen>
     });
 
     try {
-      final response = await ApiService().fetchProductListWithPagination(
+      final response = await ApiService().fetchPaginatedProducts(
         index: page,
         limit: _itemsPerPage,
-        search: _searchController.text.trim(),
       );
 
-      final List<Products> products = List<Products>.from(response['products']);
-      final int totalCount = response['totalCount'] ?? 0;
+      if (response != null && response.getProducts != null) {
+        // Convert GetProducts to Products
+        List<Products> convertedProducts = response.getProducts!.map((getProduct) {
+          return Products(
+            serialNo: getProduct.serialNo,
+            medicineName: getProduct.medicineName,
+            genericName: getProduct.genericName,
+          );
+        }).toList();
 
-      // Move this setState outside and combine with the next one
-      setState(() {
-        _allProducts = products;
-        _filteredProducts = products;
-        _currentPage = page; // Make sure this is set correctly
-        _totalProductCount = totalCount;
-        _hasMore = ((page + 1) * _itemsPerPage) < totalCount;
-        _isProductsLoading = false;
-      });
-
-      // Debug print to verify total count and current page
-      debugPrint('Loaded Products: ${_filteredProducts.length}');
-      debugPrint('Total Product Count: $_totalProductCount');
-      debugPrint('Current Page: $_currentPage');
-
-      // Force UI to update
-      if (mounted) {
         setState(() {
-          // This empty setState forces the build method to run again
-          // which will redraw the pagination with the correct selected page
+          _allProducts = convertedProducts;
+          _filteredProducts = convertedProducts;
+          _currentPage = page;
+          _totalProductCount = response.totalCount ?? 0;
+          _hasMore = ((page + 1) * _itemsPerPage) < _totalProductCount;
+          _isProductsLoading = false;
+        });
+      } else {
+        setState(() {
+          _isProductsLoading = false;
+          // _errorMessage = 'No products found.';
+          _filteredProducts = [];
         });
       }
     } catch (e) {
@@ -574,7 +986,7 @@ class _UserDashboardScreenState extends State<UserDashboardScreen>
     return Align(
       alignment: Alignment.bottomLeft,
       child: Container(
-        padding: const EdgeInsets.symmetric(vertical: 10),
+        padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 24),
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
@@ -582,7 +994,11 @@ class _UserDashboardScreenState extends State<UserDashboardScreen>
             if (_currentPage > 0)
               InkWell(
                 onTap: () {
-                  _loadProductData(page: _currentPage - 1);
+                  if (_selectedMedicalField != null && _selectedMedicalField != 'All') {
+                    _loadProductsByField(_selectedMedicalField!, page: _currentPage - 1);
+                  } else {
+                    _loadProductData(page: _currentPage - 1);
+                  }
                 },
                 borderRadius: BorderRadius.circular(6),
                 child: Container(
@@ -605,30 +1021,36 @@ class _UserDashboardScreenState extends State<UserDashboardScreen>
               final bool isSelected = pageNumber == _currentPage;
               debugPrint('Page ${pageNumber + 1}: isSelected = $isSelected, _currentPage = $_currentPage');
 
-              return InkWell(
-                onTap: () {
-                  debugPrint('Tapped on page ${pageNumber + 1}');
-                  if (_currentPage != pageNumber) {
-                    _loadProductData(page: pageNumber);
-                  }
-                },
-                borderRadius: BorderRadius.circular(6),
-                child: Container(
-                  width: buttonSize,
-                  height: buttonSize,
-                  alignment: Alignment.center,
-                  decoration: isSelected
-                      ? BoxDecoration(
-                    color: const Color(0xff185794).withOpacity(0.1),
-                    borderRadius: BorderRadius.circular(6),
-                  )
-                      : null,
-                  child: Text(
-                    '${pageNumber + 1}',
-                    style: TextStyle(
-                      color: const Color(0xff185794),
-                      fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
-                      fontSize: fontSize,
+              return Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 6), // Adjust spacing here
+                child: InkWell(
+                  onTap: () {
+                    if (_currentPage != pageNumber) {
+                      if (_selectedMedicalField != null && _selectedMedicalField != 'All') {
+                        _loadProductsByField(_selectedMedicalField!, page: pageNumber);
+                      } else {
+                        _loadProductData(page: pageNumber);
+                      }
+                    }
+                  },
+                  borderRadius: BorderRadius.circular(6),
+                  child: Container(
+                    width: buttonSize,
+                    height: buttonSize,
+                    alignment: Alignment.center,
+                    decoration: isSelected
+                        ? BoxDecoration(
+                      color: const Color(0xff185794).withOpacity(0.1),
+                      borderRadius: BorderRadius.circular(6),
+                    )
+                        : null,
+                    child: Text(
+                      '${pageNumber + 1}',
+                      style: TextStyle(
+                        color: const Color(0xff185794),
+                        fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+                        fontSize: fontSize,
+                      ),
                     ),
                   ),
                 ),
@@ -639,7 +1061,11 @@ class _UserDashboardScreenState extends State<UserDashboardScreen>
             if (((_currentPage + 1) * itemsPerPage) < _totalProductCount)
               InkWell(
                 onTap: () {
-                  _loadProductData(page: _currentPage + 1);
+                  if (_selectedMedicalField != null && _selectedMedicalField != 'All') {
+                    _loadProductsByField(_selectedMedicalField!, page: _currentPage + 1);
+                  } else {
+                    _loadProductData(page: _currentPage + 1);
+                  }
                 },
                 borderRadius: BorderRadius.circular(6),
                 child: Container(
@@ -658,6 +1084,58 @@ class _UserDashboardScreenState extends State<UserDashboardScreen>
       ),
     );
   }
+
+  Widget _buildHorizontalMenu() {
+    return SingleChildScrollView(
+      scrollDirection: Axis.horizontal,
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      child: Row(
+        children: [
+          _buildMenuItem(Icons.dashboard, "All"),
+          const SizedBox(width: 12),
+          _buildMenuItem(Icons.biotech, "Oncology"), // Changed
+          const SizedBox(width: 12),
+          _buildMenuItem(Icons.bloodtype, "Hematology"), // Changed
+          const SizedBox(width: 12),
+          _buildMenuItem(Icons.child_care, "Paediatric Oncology"), // Changed
+        ],
+      ),
+    );
+  }
+
+
+
+  Widget _buildMenuItem(IconData icon, String label) {
+    final isSelected = (_selectedMedicalField ?? "All") == label;
+
+    return OutlinedButton.icon(
+      onPressed: () {
+        debugPrint("Clicked $label");
+        _searchController.clear();
+        if (label == "All") {
+          _selectedMedicalField = null;
+          _loadProductData(page: 0);
+        } else {
+          _loadProductsByField(label);
+        }
+      },
+      icon: Icon(icon, color: isSelected ? Colors.white : Color(0xff185794)),
+      label: Text(
+        label,
+        style: TextStyle(
+          color: isSelected ? Colors.white : Color(0xff185794),
+          fontWeight: FontWeight.bold,
+        ),
+      ),
+      style: OutlinedButton.styleFrom(
+        backgroundColor: isSelected ? Color(0xff185794) : Colors.transparent,
+        side: const BorderSide(color: Color(0xff185794)),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(30)),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+      ),
+    );
+  }
+
 
   Widget _buildAppBar() {
     final screenWidth = MediaQuery.of(context).size.width;
@@ -856,8 +1334,16 @@ class _UserDashboardScreenState extends State<UserDashboardScreen>
     return Expanded(
       child: RefreshIndicator(
         onRefresh: () async {
-          setState(() => _isRefreshing = true);
+          setState(() {
+            _isRefreshing = true;
+            // Reset to "All" when refreshing
+            _selectedMedicalField = null;
+            _searchController.clear();
+          });
+          // First refresh the account status
           await _validateUserAndLoadData();
+          // Then load all products (not filtered by field)
+          await _loadProductData(page: 0);
         },
         color: const Color(0xff185794),
         backgroundColor: Colors.white,
@@ -866,9 +1352,11 @@ class _UserDashboardScreenState extends State<UserDashboardScreen>
         child: Column(
           children: [
             _buildSearchBar(horizontalPadding),
-            const SizedBox(height: 12),
+            const SizedBox(height: 1),
+            _buildHorizontalMenu(),
+            const SizedBox(height: 1),
             _buildTableHeader(horizontalPadding),
-            const SizedBox(height: 8),
+            const SizedBox(height: 1),
             Expanded(
               child: _isProductsLoading
                   ? _buildLoadingIndicator()
@@ -893,6 +1381,9 @@ class _UserDashboardScreenState extends State<UserDashboardScreen>
       padding: EdgeInsets.symmetric(horizontal: horizontalPadding),
       child: TextField(
         controller: _searchController,
+        onSubmitted: (value) {
+          _searchProductsFromApi(value);
+        },
         decoration: InputDecoration(
           hintText: 'Search Products',
           suffixIcon: Row(
@@ -903,13 +1394,13 @@ class _UserDashboardScreenState extends State<UserDashboardScreen>
                   icon: const Icon(Icons.clear),
                   onPressed: () {
                     _searchController.clear();
-                    _loadProductData(page: 0); // Clear and reload all
+                    _loadProductData(page: 0); // Reload all products
                   },
                 ),
               IconButton(
                 icon: const Icon(Icons.search),
                 onPressed: () {
-                  _loadProductData(page: 0); // Trigger search on icon click
+                  _searchProductsFromApi(_searchController.text);
                 },
               ),
             ],
@@ -986,7 +1477,12 @@ class _UserDashboardScreenState extends State<UserDashboardScreen>
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          const Icon(Icons.error_outline, size: 48, color: Colors.red),
+          Lottie.asset(
+            "assets/animations/internet.json",
+            width: 250,
+            height: 250,
+            fit: BoxFit.contain,
+          ),
           const SizedBox(height: 16),
           Text(
             _errorMessage,
@@ -1013,10 +1509,9 @@ class _UserDashboardScreenState extends State<UserDashboardScreen>
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
           Lottie.asset(
-            _isConnected
-                ? "assets/animations/no_data_found.json"
-                : "assets/animations/internet.json",
+            "assets/animations/internet.json",
             width: 250,
+            height: 250,
             fit: BoxFit.contain,
           ),
           const SizedBox(height: 16),
@@ -1045,8 +1540,6 @@ class _UserDashboardScreenState extends State<UserDashboardScreen>
       ),
     );
   }
-
-
 
   // Extracted method for the ListView to use with RefreshIndicator
   Widget _buildProductListView(double horizontalPadding) {
@@ -1137,38 +1630,65 @@ class _UserDashboardScreenState extends State<UserDashboardScreen>
                 Expanded(flex: 1, child: Text('$serial')),
                 Expanded(flex: 3, child: Text(product.medicineName ?? '-')),
                 Expanded(flex: 3, child: Text(product.genericName ?? '-')),
-                PopupMenuButton<String>(
-                  color: const Color(0xff185794),
-                  onSelected: (value) {
-                    if (value == 'view') {
+                IconButton(
+                  icon: const Icon(Icons.visibility, color: Color(0xff185794)),
+                  tooltip: 'View Details',
+                  onPressed: () async {
+                    // Show Lottie animation dialog
+                    showDialog(
+                      context: context,
+                      barrierDismissible: false,
+                      builder: (_) => AlertDialog(
+                        elevation: 0,
+                        backgroundColor: Colors.transparent,
+                        content: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Lottie.asset(
+                              'assets/animations/more_product_loading.json',
+                              width: 200,
+                              height: 200,
+                              repeat: true,
+                            ),
+                            const SizedBox(height: 12),
+                            const Text(
+                              'Product Loading...',
+                              style: TextStyle(
+                                fontSize: 16,
+                                fontWeight: FontWeight.bold,
+                                color: Colors.white,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    );
+
+                    final response = await ApiService().fetchProductDetailsBySerialNo(product.serialNo ?? 0);
+
+                    Navigator.of(context).pop(); // Close Lottie loader
+
+                    if (response != null &&
+                        response.getProductsContent != null &&
+                        response.getProductsContent!.isNotEmpty) {
+                      final detailedProduct = response.getProductsContent!.first;
+
                       Navigator.push(
                         context,
                         MaterialPageRoute(
-                          builder: (_) => ProductDetailsScreen(product: product),
+                          builder: (_) => ProductDetailsScreen(getProductsContent: detailedProduct),
                         ),
                       );
-                      /*_showProductDetails({
-                        'medicineName': product.medicineName ?? 'N/A',
-                        'genericName': product.genericName ?? 'N/A',
-                        'manufacturedBy': product.manufacturedBy ?? 'N/A',
-                        'indication': product.indication ?? 'N/A',
-                      });*/
+                    } else {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(
+                          content: Text('Failed to load product details.'),
+                          backgroundColor: Colors.red,
+                        ),
+                      );
                     }
                   },
-                  itemBuilder: (_) => [
-                    const PopupMenuItem(
-                      value: 'view',
-                      child: ListTile(
-                        leading: Icon(Icons.visibility, color: Colors.white),
-                        title: Text(
-                          "View",
-                          style: TextStyle(color: Colors.white),
-                        ),
-                      ),
-                    ),
-                  ],
-                  icon: const Icon(Icons.more_vert, color: Color(0xff185794)),
-                )
+                ),
               ],
             ),
           ),
@@ -1374,7 +1894,6 @@ class _UserDashboardScreenState extends State<UserDashboardScreen>
           children: [
             // Top Bar (visible for both active and pending/rejected users)
             _buildAppBar(),
-
             // Content based on user status
             isUserActive
                 ? _buildProductListing()

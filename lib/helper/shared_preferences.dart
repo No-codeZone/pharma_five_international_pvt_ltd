@@ -9,6 +9,7 @@ class SharedPreferenceHelper {
   static const String _userTypeKey = 'userType';
   static const String _userStatusKey = 'userStatus';
   static const _keyInstallationId = 'installation_id';
+  static const String _userSnoKey = 'userSno';
 
   static SharedPreferences? _preferences;
 
@@ -80,6 +81,30 @@ class SharedPreferenceHelper {
     }
   }
 
+  static Future<bool> setUserSno(int sno) async {
+    try {
+      final prefs = await _getInstance();
+      return await prefs.setInt(_userSnoKey, sno);
+    } catch (e) {
+      if (kDebugMode) {
+        print('Error setting user sno: $e');
+      }
+      return false;
+    }
+  }
+
+  static Future<int?> getUserSno() async {
+    try {
+      final prefs = await _getInstance();
+      return prefs.getInt(_userSnoKey);
+    } catch (e) {
+      if (kDebugMode) {
+        print('Error getting user sno: $e');
+      }
+      return null;
+    }
+  }
+
   static Future<bool> setUserType(String userType) async {
     try {
       final prefs = await _getInstance();
@@ -143,6 +168,7 @@ class SharedPreferenceHelper {
         prefs.remove(_userEmailKey),
         prefs.remove(_userTypeKey),
         prefs.remove(_userStatusKey),
+        prefs.remove(_userSnoKey),
       ]).then((_) => true);
     } catch (e) {
       if (kDebugMode) {

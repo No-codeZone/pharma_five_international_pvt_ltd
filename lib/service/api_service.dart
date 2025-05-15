@@ -5,11 +5,17 @@ import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import '../helper/shared_preferences.dart';
 import '../model/add_product_request_model.dart';
+import '../model/get_field_product_listing_model.dart';
+import '../model/get_product_listing_response_model.dart';
+import '../model/get_product_more_response_model.dart';
+import '../model/get_product_search_model.dart';
 import '../model/login_session_model.dart';
 import '../model/product_search_listing_response_model.dart';
 import '../model/product_search_logs_model.dart';
 import '../model/product_update_request_model.dart';
 import '../model/product_update_response_model.dart';
+import '../model/request_enquiry_model.dart';
+import '../model/response_enquiry_model.dart';
 import '../model/update_product_listing_request_model.dart';
 import '../model/update_product_listing_response_model.dart';
 
@@ -26,6 +32,7 @@ class ApiService {
   final String userUpdateAPI="/update-status";
   final String searchUserListingAPI="/search";
   final String getProductListingAPI="/product/list";  //baseUrlProduct
+  final String getProductListAPI="/product/list";  //baseUrlProduct
   final String searchProductListingAPI="/product/list";  //baseUrlProduct
   final String updateProductAPI="/product/update";   //baseUrlProduct
   final String updateProductListingAPI="/product/update";   //baseUrlProduct
@@ -33,6 +40,7 @@ class ApiService {
   final String addProductAPI="/product/add";   //baseUrlProduct
   final String deleteProductAPI="/product/delete/";   //baseUrlProduct
   final String bulkProductAPI="/product/upload";   //baseUrlProduct
+  final String enquiryProductAPI="/enquiry/add";   //baseUrlProduct
   final String sendOTPAPI="/send-otp";
   final String resetPasswordAPI="/reset-password";
   final String searchLogsAPI="/product/search-logs";  //baseUrlProduct
@@ -276,8 +284,6 @@ class ApiService {
     }
   }
 
-
-
   /*/// Fetch products with pagination and search parameters
   Future<Map<String, dynamic>> fetchProductList({
     int index = 0,
@@ -373,28 +379,28 @@ class ApiService {
   }
 
   ///Update product
-  Future<ProductUpdateResponseModel?> updateProduct(ProductUpdateRequestModel requestModel) async {
-    try {
-      final response = await http.put(
-        Uri.parse('$baseUrlProduct$updateProductAPI'),
-        headers: <String, String>{
-          'Content-Type': 'application/json; charset=UTF-8',
-        },
-        body: jsonEncode(requestModel.toJson()),
-      );
-
-      if (response.statusCode == 200) {
-        return ProductUpdateResponseModel.fromJson(jsonDecode(response.body));
-      } else {
-        debugPrint('Failed to update product. Status code: ${response.statusCode}');
-        debugPrint('Response body: ${response.body}');
-        return null;
-      }
-    } catch (e) {
-      debugPrint('Exception when updating product: $e');
-      return null;
-    }
-  }
+  // Future<ProductUpdateResponseModel?> updateProduct(ProductUpdateRequestModel requestModel) async {
+  //   try {
+  //     final response = await http.put(
+  //       Uri.parse('$baseUrlProduct$updateProductAPI'),
+  //       headers: <String, String>{
+  //         'Content-Type': 'application/json; charset=UTF-8',
+  //       },
+  //       body: jsonEncode(requestModel.toJson()),
+  //     );
+  //
+  //     if (response.statusCode == 200) {
+  //       return ProductUpdateResponseModel.fromJson(jsonDecode(response.body));
+  //     } else {
+  //       debugPrint('Failed to update product. Status code: ${response.statusCode}');
+  //       debugPrint('Response body: ${response.body}');
+  //       return null;
+  //     }
+  //   } catch (e) {
+  //     debugPrint('Exception when updating product: $e');
+  //     return null;
+  //   }
+  // }
 
   ///Delete product API
   Future<Map<String, dynamic>> deleteProduct(String productId) async {
@@ -525,6 +531,94 @@ class ApiService {
   }
 
   ///Product update listing
+  /*Future<UpdateProductListingResponseModel?> updateProductListing(
+      UpdateProductListingRequestModel requestModel) async {
+    final url = Uri.parse("$baseUrlProduct$updateProductListingAPI");
+
+    try {
+      final body = jsonEncode(requestModel.toJson());
+      print("PUT $url");
+      print("Request body:/UpdateProduct $body");
+
+      final response = await http.put(
+        url,
+        headers: {"Content-Type": "application/json"},
+        body: body,
+      );
+
+      print("Response status:/UpdateProduct ${response.statusCode}");
+      print("Response body:/UpdateProduct ${response.body}");
+
+      // Added detailed logging for debugging
+      print("DEBUGGING: Full response body structure:");
+      try {
+        final decoded = jsonDecode(response.body);
+        print(const JsonEncoder.withIndent('  ').convert(decoded));
+
+        // Print each key-value pair for easier debugging
+        decoded.forEach((key, value) {
+          print("Key: $key, Value type: ${value.runtimeType}, Value: $value");
+        });
+      } catch (e) {
+        print("Failed to decode response for debugging: $e");
+      }
+
+      if (response.statusCode == 200) {
+        final Map<String, dynamic> json = jsonDecode(response.body);
+
+        // Check if the API uses a different success indicator
+        final bool isSuccess = json['success'] == true ||
+            json['status'] == 'success' ||
+            json['code'] == 200 ||
+            json['status'] == 1 ||
+            (json['data'] != null && json['error'] == null);
+
+        if (isSuccess) {
+          print("Success detected in response");
+          if (json['data'] != null) {
+            return UpdateProductListingResponseModel.fromJson(json['data']);
+          } else if (json['result'] != null) {
+            // Some APIs use 'result' instead of 'data'
+            return UpdateProductListingResponseModel.fromJson(json['result']);
+          } else {
+            print("Success without data:/UpdateProduct ${json['message'] ?? 'No data'}");
+            // Create a dummy response with status 1 to indicate success
+            return UpdateProductListingResponseModel(status: 1);
+          }
+        } else {
+          // Check for different error formats
+          String errorMsg = json['error'] ??
+              json['message'] ??
+              json['errorMessage'] ??
+              json['errorMsg'] ??
+              'Unknown API error';
+
+          print("API error:/UpdateProduct $errorMsg");
+
+          // Return a model with status 0 to indicate failure with error message
+          return UpdateProductListingResponseModel(
+              status: 0,
+              medicineName: errorMsg
+          );
+        }
+      } else {
+        print("HTTP error:/UpdateProduct ${response.statusCode}: ${response.reasonPhrase}");
+        // Return a model with status 0 to indicate HTTP error
+        return UpdateProductListingResponseModel(
+            status: 0,
+            medicineName: "HTTP error ${response.statusCode}: ${response.reasonPhrase}"
+        );
+      }
+    } catch (e) {
+      print("Exception in updateProductListing: $e");
+      // Return a model with status 0 to indicate exception
+      return UpdateProductListingResponseModel(
+          status: 0,
+          medicineName: "Exception: $e"
+      );
+    }
+  }*/
+
   Future<UpdateProductListingResponseModel?> updateProductListing(
       UpdateProductListingRequestModel requestModel) async {
     final url = Uri.parse("$baseUrlProduct$updateProductListingAPI");
@@ -646,6 +740,137 @@ class ApiService {
       return jsonList.map((e) => ProductSearchLogs.fromJson(e)).toList();
     } else {
       throw Exception("Failed to load search logs");
+    }
+  }
+
+  ///Fetch Product Listing new API
+  Future<GetProductListingResponseModel?> fetchPaginatedProducts({
+    int index = 0,
+    int limit = 10,
+  }) async {
+    try {
+      final response = await http.get(
+        Uri.parse('$baseUrlProduct/product/list?index=$index&limit=$limit'),
+      );
+
+      if (response.statusCode == 200) {
+        return GetProductListingResponseModel.fromJson(json.decode(response.body));
+      } else {
+        print('Failed to load product listing. Status: ${response.statusCode}');
+        return null;
+      }
+    } catch (e) {
+      print('Exception in fetchPaginatedProducts: $e');
+      return null;
+    }
+  }
+
+  ///Fetch paginated product Admin API
+  Future<GetProductMoreResponseModel?> fetchAdminPaginatedProducts({
+    int index = 0,
+    int limit = 10,
+  }) async {
+    try {
+      final response = await http.get(
+        Uri.parse('$baseUrlProduct/product/list?index=$index&limit=$limit'),
+      );
+      if (response.statusCode == 200) {
+        return GetProductMoreResponseModel.fromJson(json.decode(response.body));
+      } else {
+        print('Failed to load product listing. Status: ${response.statusCode}');
+        return null;
+      }
+    } catch (e) {
+      print('Exception in fetchPaginatedProducts: $e');
+      return null;
+    }
+  }
+
+
+  ///Fetch view more product content API
+  Future<GetProductMoreResponseModel?> fetchProductDetailsBySerialNo(int serialNo) async {
+    try {
+      final response = await http.get(
+        Uri.parse('$baseUrlProduct/product/list?serialNo=$serialNo'),
+      );
+
+      if (response.statusCode == 200) {
+        return GetProductMoreResponseModel.fromJson(json.decode(response.body));
+      } else {
+        print('Failed to fetch product details. Status: ${response.statusCode}');
+        return null;
+      }
+    } catch (e) {
+      print('Exception in fetchProductDetailsBySerialNo: $e');
+      return null;
+    }
+  }
+
+  ///Fetch searched product new API
+  Future<GetProductSearchResponseModel?> searchProducts(String searchTerm) async {
+    try {
+      final response = await http.get(
+        Uri.parse('$baseUrlProduct/product/list?search=$searchTerm'),
+      );
+
+      if (response.statusCode == 200) {
+        return GetProductSearchResponseModel.fromJson(json.decode(response.body));
+      } else {
+        print('Failed to search products. Status: ${response.statusCode}');
+        return null;
+      }
+    } catch (e) {
+      print('Exception in searchProducts: $e');
+      return null;
+    }
+  }
+
+  ///Enquiry product API
+  Future<ResponseEnquiryModel?> submitEnquiry(RequestEnquiryModel model) async {
+    final url = Uri.parse('$baseUrlProduct$enquiryProductAPI');
+
+    try {
+      final response = await http.post(
+        url,
+        headers: {"Content-Type": "application/json"},
+        body: jsonEncode(model.toJson()),
+      );
+
+      if (response.statusCode == 200) {
+        return ResponseEnquiryModel.fromJson(jsonDecode(response.body));
+      } else {
+        throw Exception("Failed to submit enquiry");
+      }
+    } catch (e) {
+      debugPrint("Enquiry API error: $e");
+      return null;
+    }
+  }
+
+  ///Get product listing by Medical field API
+  Future<GetFieldProductListingModel?> fetchProductsByField({
+    required String field,
+    required int index,
+    required int limit,
+  }) async {
+    final encodedField = Uri.encodeComponent(field);
+    final url = Uri.parse(
+      '$baseUrlProduct/product/list?index=$index&limit=$limit&medicalField=$encodedField',
+    );
+
+    try {
+      final response = await http.get(url);
+
+      if (response.statusCode == 200) {
+        final jsonBody = json.decode(response.body);
+        return GetFieldProductListingModel.fromJson(jsonBody);
+      } else {
+        debugPrint('Error fetching field products: ${response.statusCode}');
+        return null;
+      }
+    } catch (e) {
+      debugPrint('Exception in fetchProductsByField: $e');
+      return null;
     }
   }
 

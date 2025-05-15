@@ -5,6 +5,7 @@ import 'package:fluttertoast/fluttertoast.dart';
 import 'package:http/http.dart' as http;
 import 'package:internet_connection_checker_plus/internet_connection_checker_plus.dart';
 import 'package:pharma_five/service/api_service.dart';
+import 'package:pinput/pinput.dart';
 import 'login_screen.dart';
 
 class ForgotPasswordScreen extends StatefulWidget {
@@ -225,27 +226,29 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
                 if (_isOtpSent)
                   Padding(
                     padding: const EdgeInsets.only(top: 10),
-                    child: TextFormField(
+                    child: Pinput(
+                      length: 6,
                       controller: _otpController,
-                      keyboardType: TextInputType.number,
-                      maxLength: 6,
-                      enabled: true,
-                      textAlign: TextAlign.center,
-                      decoration: InputDecoration(
-                        labelText: "Enter OTP",
-                        hintText: "000000",
-                        counterText: '',
-                        filled: true,
-                        fillColor: Colors.grey.shade100,
-                        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(16),
-                          borderSide: BorderSide.none,
+                      autofocus: true,
+                      defaultPinTheme: PinTheme(
+                        width: 56,
+                        height: 56,
+                        textStyle: const TextStyle(
+                          fontSize: 20,
+                          color: Colors.black,
+                          fontWeight: FontWeight.w600,
+                        ),
+                        decoration: BoxDecoration(
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(color: const Color(0xff185794)),
+                          color: Colors.grey.shade100,
                         ),
                       ),
                       onChanged: (value) {
                         setState(() => _isOtpValid = value.trim().length == 6);
                       },
+                      keyboardType: TextInputType.number,
+                      showCursor: true,
                     ),
                   ),
 
@@ -342,7 +345,7 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
           ),
         ),
         Image.asset(
-          'assets/images/pharmafive_512x512.png',
+          'assets/images/logo_pf.png',
           width: 80,
           height: 80,
           errorBuilder: (_, __, ___) =>

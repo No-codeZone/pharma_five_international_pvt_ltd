@@ -1,14 +1,15 @@
 import 'dart:async';
+
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:fluttertoast/fluttertoast.dart';
+import 'package:http/http.dart' as http;
 import 'package:internet_connection_checker_plus/internet_connection_checker_plus.dart';
 import 'package:pharma_five/ui/login_screen.dart';
 import 'package:pharma_five/ui/walk_through_screen.dart';
+
 import '../service/api_service.dart';
-import 'package:http/http.dart' as http;
-import '../service/internet_connectivity_service.dart';
 
 class RegistrationScreen extends StatefulWidget {
   const RegistrationScreen({Key? key}) : super(key: key);
@@ -46,9 +47,7 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
         _showToast("No internet connection", true);
       }
     });
-
   }
-
 
   void _showToast(String message, bool isError) {
     Fluttertoast.showToast(
@@ -75,41 +74,82 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
 
     bool hasError = false;
 
+    // Check name (with numeric value check)
     if (_nameController.text.trim().isEmpty) {
-      _isNameValid = false;
+      setState(() {
+        _isNameValid = false;
+        _validationMessage = "Please enter your full name";
+      });
       hasError = true;
+      return;
+    } else if (!_isValidFullName(_nameController.text.trim())) {
+      setState(() {
+        _isNameValid = false;
+        _validationMessage =
+            "Full name should only contain alphabetic characters and spaces";
+      });
+      hasError = true;
+      return;
+    } else if (!_isValidFullName(_nameController.text.trim())) {
+      setState(() {
+        _isNameValid = false;
+        _validationMessage =
+            "Full name should only contain alphabets and spaces";
+      });
+      hasError = true;
+      return;
     }
 
+    // Check organization
     if (_organizationController.text.trim().isEmpty) {
-      _isOrganizationValid = false;
+      setState(() {
+        _isOrganizationValid = false;
+        _validationMessage = "Please enter your organization name";
+      });
       hasError = true;
+      return;
     }
 
-    if (_mobileController.text.trim().isEmpty || _mobileController.text.length != 10) {
-      _isMobileValid = false;
+    // Check mobile number
+    if (_mobileController.text.trim().isEmpty ||
+        _mobileController.text.length != 10) {
+      setState(() {
+        _isMobileValid = false;
+        _validationMessage = _mobileController.text.trim().isEmpty
+            ? "Please enter mobile number"
+            : "Mobile number must be 10 digits";
+      });
       hasError = true;
-      _validationMessage = _mobileController.text.trim().isEmpty
-          ? "Please enter mobile number"
-          : "Mobile number must be 10 digits";
+      return;
     }
 
-    /*final emailPattern = r"^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$";
-    final isEmailValidRegex = RegExp(emailPattern).hasMatch(_emailController.text.trim());
+    // Check email
+    final emailPattern = r"^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$";
+    final isEmailValidRegex =
+        RegExp(emailPattern).hasMatch(_emailController.text.trim());
 
     if (_emailController.text.trim().isEmpty || !isEmailValidRegex) {
-      _isEmailValid = false;
+      setState(() {
+        _isEmailValid = false;
+        _validationMessage = _emailController.text.trim().isEmpty
+            ? "Please enter email"
+            : "Enter a valid email address";
+      });
       hasError = true;
-      _validationMessage = _emailController.text.trim().isEmpty
-          ? "Please enter email"
-          : "Enter a valid email address";
-    }*/
+      return;
+    }
 
-    if (_passwordController.text.trim().isEmpty || _passwordController.text.length < 8) {
-      _isPasswordValid = false;
+    // Check password
+    if (_passwordController.text.trim().isEmpty ||
+        _passwordController.text.length < 8) {
+      setState(() {
+        _isPasswordValid = false;
+        _validationMessage = _passwordController.text.trim().isEmpty
+            ? "Please enter password"
+            : "Password must include at least 8 characters";
+      });
       hasError = true;
-      _validationMessage = _passwordController.text.trim().isEmpty
-          ? "Please enter password"
-          : "Password must include at least 8 characters";
+      return;
     }
 
     if (hasError) {
@@ -119,7 +159,9 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
 
     final isConnected = await InternetConnection().hasInternetAccess;
     if (!isConnected) {
-      _showToast("No internet connection. Please check your connection and try again.", true);
+      _showToast(
+          "No internet connection. Please check your connection and try again.",
+          true);
       return;
     }
 
@@ -128,14 +170,14 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
 
       final response = await ApiService()
           .registerUser(
-        name: _nameController.text.trim(),
-        mobileNumber: _mobileController.text.trim(),
-        email: _emailController.text.trim(),
-        organisationName: _organizationController.text.trim(),
-        password: _passwordController.text.trim(),
-      )
+            name: _nameController.text.trim(),
+            mobileNumber: _mobileController.text.trim(),
+            email: _emailController.text.trim(),
+            organisationName: _organizationController.text.trim(),
+            password: _passwordController.text.trim(),
+          )
           .timeout(const Duration(seconds: 60),
-          onTimeout: () => throw TimeoutException("Request timed out"));
+              onTimeout: () => throw TimeoutException("Request timed out"));
 
       if (!mounted) return;
       setState(() => _isLoading = false);
@@ -164,31 +206,13 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
             Navigator.pushAndRemoveUntil(
               context,
               MaterialPageRoute(builder: (_) => const LoginScreen()),
-                  (route) => false,
+              (route) => false,
             );
           }
         });
       } else {
         setState(() => _validationMessage = response['message']);
-        _showToast(response['message'], false);
-
-        debugPrint("Registration response is here===\t${response['message'].toString()}");
-
-        _nameController.clear();
-        _organizationController.clear();
-        _mobileController.clear();
-        _emailController.clear();
-        _passwordController.clear();
-
-        Future.delayed(const Duration(milliseconds: 800), () {
-          if (mounted) {
-            Navigator.pushAndRemoveUntil(
-              context,
-              MaterialPageRoute(builder: (_) => const LoginScreen()),
-                  (route) => false,
-            );
-          }
-        });
+        _showToast(response['message'], true);
       }
     } on TimeoutException {
       setState(() {
@@ -205,12 +229,73 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
     }
   }
 
+  // Updated buildTextField method with input filtering for name field
+  Widget buildTextField(String label, TextEditingController controller,
+      {bool isEmail = false, bool isValid = true, bool isNameField = false}) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        TextFormField(
+          controller: controller,
+          keyboardType: isEmail ? TextInputType.emailAddress : TextInputType.text,
+          // Add input formatters for name field
+          inputFormatters: isNameField
+              ? [
+            FilteringTextInputFormatter.allow(RegExp(r'[a-zA-Z ]')),
+          ]
+              : null,
+          decoration: InputDecoration(
+            labelText: label,
+            labelStyle: TextStyle(color: Colors.grey.shade600),
+            filled: true,
+            fillColor: Colors.grey.shade100,
+            contentPadding: const EdgeInsets.symmetric(vertical: 16, horizontal: 20),
+            border: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(16),
+              borderSide: isValid ? BorderSide.none : const BorderSide(color: Colors.red, width: 1),
+            ),
+            enabledBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(16),
+              borderSide: isValid ? BorderSide.none : const BorderSide(color: Colors.red, width: 1),
+            ),
+            focusedBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(16),
+              borderSide: const BorderSide(color: Color(0xff185794), width: 2),
+            ),
+            errorBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(16),
+              borderSide: const BorderSide(color: Colors.red, width: 1),
+            ),
+            focusedErrorBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(16),
+              borderSide: const BorderSide(color: Colors.red, width: 2),
+            ),
+          ),
+        ),
+        const SizedBox(height: 12),
+      ],
+    );
+  }
+
+  bool _isValidFullName(String name) {
+    // This pattern accepts only alphabetic characters (both uppercase and lowercase) and spaces
+    // It also ensures the name starts with a letter, can have spaces between words, and doesn't end with a space
+    return RegExp(r'^[A-Za-z]+( [A-Za-z]+)*$').hasMatch(name);
+  }
+
+  // Helper method to check if a string contains numbers
+  bool _containsNumbers(String text) {
+    return RegExp(r'[0-9]').hasMatch(text);
+  }
+
   Future<bool> hasRealInternetConnection() async {
     final connectivityResult = await Connectivity().checkConnectivity();
     if (connectivityResult == ConnectivityResult.none) return false;
 
     try {
-      final result = await http.get(Uri.parse('https://www.google.com')).timeout(Duration(seconds: 3));
+      final result = await http
+          .get(Uri.parse('https://www.google.com'))
+          .timeout(Duration(seconds: 3));
       return result.statusCode == 200;
     } catch (_) {
       return false;
@@ -227,7 +312,6 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
       _showToast("Internet connected", false);
     }
   }
-
 
   @override
   Widget build(BuildContext context) {
@@ -248,7 +332,8 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
                       InkWell(
                         onTap: () => Navigator.pushReplacement(
                           context,
-                          MaterialPageRoute(builder: (_) => const WalkthroughScreen()),
+                          MaterialPageRoute(
+                              builder: (_) => const WalkthroughScreen()),
                         ),
                         borderRadius: BorderRadius.circular(20),
                         child: Container(
@@ -257,10 +342,12 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
                           decoration: BoxDecoration(
                             color: const Color(0xff185794),
                             borderRadius: BorderRadius.circular(20),
-                            border: Border.all(color: const Color(0xFF9ABEE3), width: 4),
+                            border: Border.all(
+                                color: const Color(0xFF9ABEE3), width: 4),
                           ),
                           child: const Center(
-                            child: Icon(Icons.arrow_back_ios_new, color: Colors.white, size: 18),
+                            child: Icon(Icons.arrow_back_ios_new,
+                                color: Colors.white, size: 18),
                           ),
                         ),
                       ),
@@ -268,15 +355,20 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
                         'assets/images/logo_pf.png',
                         width: 80,
                         height: 80,
-                        errorBuilder: (_, __, ___) => Icon(Icons.medical_services_outlined,
-                            color: Color(0xff185794), size: 30),
+                        errorBuilder: (_, __, ___) => Icon(
+                            Icons.medical_services_outlined,
+                            color: Color(0xff185794),
+                            size: 30),
                       ),
                     ],
                   ),
                   const SizedBox(height: 16),
                   const Text(
                     'Signup to Pharma Five International Private Limited',
-                    style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: Colors.black),
+                    style: TextStyle(
+                        fontSize: 24,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.black),
                   ),
                   const SizedBox(height: 16),
                   Text(
@@ -285,30 +377,39 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
                   ),
                   const SizedBox(height: 24),
 
-                  buildTextField("Full Name", _nameController, isValid: _isNameValid),
-                  buildTextField("Organization", _organizationController, isValid: _isOrganizationValid),
-                  buildMobileNumberField(),
-                  buildTextField("Email", _emailController, isEmail: true, isValid: _isEmailValid),
-                  buildPasswordField(),
-
-                  if (_validationMessage != null &&
-                      (!_isNameValid || !_isOrganizationValid || !_isMobileValid || !_isEmailValid || !_isPasswordValid))
+                  // Error message container at the top
+                  if (_validationMessage != null)
                     Container(
-                      padding: const EdgeInsets.all(8),
-                      margin: const EdgeInsets.only(bottom: 12),
+                      padding: const EdgeInsets.all(12),
+                      margin: const EdgeInsets.only(bottom: 16),
+                      decoration: BoxDecoration(
+                        color: Colors.red.shade50,
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: Colors.red.shade200),
+                      ),
                       child: Row(
                         children: [
-                          const Icon(Icons.error_outline, color: Colors.red, size: 16),
-                          const SizedBox(width: 8),
+                          const Icon(Icons.error_outline,
+                              color: Colors.red, size: 20),
+                          const SizedBox(width: 12),
                           Expanded(
                             child: Text(
                               _validationMessage!,
-                              style: TextStyle(color: Colors.red.shade700, fontSize: 14),
+                              style: TextStyle(
+                                  color: Colors.red.shade700, fontSize: 14),
                             ),
                           ),
                         ],
                       ),
                     ),
+
+                  buildTextField("Full Name", _nameController, isValid: _isNameValid, isNameField: true),
+                  buildTextField("Organization", _organizationController,
+                      isValid: _isOrganizationValid),
+                  buildMobileNumberField(),
+                  buildTextField("Email", _emailController,
+                      isEmail: true, isValid: _isEmailValid),
+                  buildPasswordField(),
 
                   SizedBox(
                     width: double.infinity,
@@ -318,19 +419,23 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
                       style: ElevatedButton.styleFrom(
                         backgroundColor: const Color(0xff185794),
                         foregroundColor: Colors.white,
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(30)),
+                        shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(30)),
                         disabledBackgroundColor: Colors.grey.shade300,
                       ),
                       child: _isLoading
                           ? const SizedBox(
-                        height: 24,
-                        width: 24,
-                        child: CircularProgressIndicator(
-                          strokeWidth: 2.5,
-                          valueColor: AlwaysStoppedAnimation<Color>(Color(0xff185794)),
-                        ),
-                      )
-                          : const Text('Sign Up', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
+                              height: 24,
+                              width: 24,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2.5,
+                                valueColor: AlwaysStoppedAnimation<Color>(
+                                    Color(0xff185794)),
+                              ),
+                            )
+                          : const Text('Sign Up',
+                              style: TextStyle(
+                                  fontSize: 16, fontWeight: FontWeight.w600)),
                     ),
                   ),
 
@@ -340,7 +445,9 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
                     children: [
                       Padding(
                         padding: const EdgeInsets.symmetric(horizontal: 12),
-                        child: Text('or', style: TextStyle(color: Colors.grey.shade600, fontSize: 14)),
+                        child: Text('or',
+                            style: TextStyle(
+                                color: Colors.grey.shade600, fontSize: 14)),
                       ),
                     ],
                   ),
@@ -353,36 +460,26 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
                       onPressed: _isLoading
                           ? null
                           : () {
-                        Navigator.pushReplacement(
-                          context,
-                          MaterialPageRoute(builder: (_) => const LoginScreen()),
-                        );
-                      },
+                              Navigator.pushReplacement(
+                                context,
+                                MaterialPageRoute(
+                                    builder: (_) => const LoginScreen()),
+                              );
+                            },
                       style: OutlinedButton.styleFrom(
                         foregroundColor: Colors.grey.shade700,
                         side: const BorderSide(color: Color(0xff185794)),
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(30)),
+                        shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(30)),
                       ),
                       child: const Text('Login',
-                          style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600, color: Color(0xff185794))),
+                          style: TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.w600,
+                              color: Color(0xff185794))),
                     ),
                   ),
                   const SizedBox(height: 16),
-                  /*Center(
-                    child: RichText(
-                      textAlign: TextAlign.center,
-                      text: TextSpan(
-                        style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
-                        children: const [
-                          TextSpan(text: 'By signing in, you agree to the '),
-                          TextSpan(
-                            text: 'Terms and Privacy Policy',
-                            style: TextStyle(fontWeight: FontWeight.bold, color: Colors.black),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),*/
                 ],
               ),
             ),
@@ -392,38 +489,52 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
     );
   }
 
-  Widget buildTextField(String label, TextEditingController controller,
+  /*Widget buildTextField(String label, TextEditingController controller,
       {bool isEmail = false, bool isValid = true}) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         TextFormField(
           controller: controller,
-          keyboardType: isEmail ? TextInputType.emailAddress : TextInputType.text,
+          keyboardType:
+              isEmail ? TextInputType.emailAddress : TextInputType.text,
           decoration: InputDecoration(
             labelText: label,
             labelStyle: TextStyle(color: Colors.grey.shade600),
             filled: true,
             fillColor: Colors.grey.shade100,
-            contentPadding: const EdgeInsets.symmetric(vertical: 16, horizontal: 20),
+            contentPadding:
+                const EdgeInsets.symmetric(vertical: 16, horizontal: 20),
             border: OutlineInputBorder(
               borderRadius: BorderRadius.circular(16),
-              borderSide: isValid ? BorderSide.none : const BorderSide(color: Color(0xff185794), width: 2),
+              borderSide: isValid
+                  ? BorderSide.none
+                  : const BorderSide(color: Colors.red, width: 1),
             ),
             enabledBorder: OutlineInputBorder(
               borderRadius: BorderRadius.circular(16),
-              borderSide: isValid ? BorderSide.none : const BorderSide(color: Color(0xff185794), width: 2),
+              borderSide: isValid
+                  ? BorderSide.none
+                  : const BorderSide(color: Colors.red, width: 1),
             ),
             focusedBorder: OutlineInputBorder(
               borderRadius: BorderRadius.circular(16),
               borderSide: const BorderSide(color: Color(0xff185794), width: 2),
+            ),
+            errorBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(16),
+              borderSide: const BorderSide(color: Colors.red, width: 1),
+            ),
+            focusedErrorBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(16),
+              borderSide: const BorderSide(color: Colors.red, width: 2),
             ),
           ),
         ),
         const SizedBox(height: 12),
       ],
     );
-  }
+  }*/
 
   Widget buildMobileNumberField() {
     return Column(
@@ -439,18 +550,31 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
             labelStyle: TextStyle(color: Colors.grey.shade600),
             filled: true,
             fillColor: Colors.grey.shade100,
-            contentPadding: const EdgeInsets.symmetric(vertical: 16, horizontal: 20),
+            contentPadding:
+                const EdgeInsets.symmetric(vertical: 16, horizontal: 20),
             border: OutlineInputBorder(
               borderRadius: BorderRadius.circular(16),
-              borderSide: _isMobileValid ? BorderSide.none : const BorderSide(color: Color(0xff185794), width: 2),
+              borderSide: _isMobileValid
+                  ? BorderSide.none
+                  : const BorderSide(color: Colors.red, width: 1),
             ),
             enabledBorder: OutlineInputBorder(
               borderRadius: BorderRadius.circular(16),
-              borderSide: _isMobileValid ? BorderSide.none : const BorderSide(color: Color(0xff185794), width: 2),
+              borderSide: _isMobileValid
+                  ? BorderSide.none
+                  : const BorderSide(color: Colors.red, width: 1),
             ),
             focusedBorder: OutlineInputBorder(
               borderRadius: BorderRadius.circular(16),
               borderSide: const BorderSide(color: Color(0xff185794), width: 2),
+            ),
+            errorBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(16),
+              borderSide: const BorderSide(color: Colors.red, width: 1),
+            ),
+            focusedErrorBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(16),
+              borderSide: const BorderSide(color: Colors.red, width: 2),
             ),
             counterText: "",
           ),
@@ -472,25 +596,41 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
             labelStyle: TextStyle(color: Colors.grey.shade600),
             filled: true,
             fillColor: Colors.grey.shade100,
-            contentPadding: const EdgeInsets.symmetric(vertical: 16, horizontal: 20),
+            contentPadding:
+                const EdgeInsets.symmetric(vertical: 16, horizontal: 20),
             border: OutlineInputBorder(
               borderRadius: BorderRadius.circular(16),
-              borderSide: _isPasswordValid ? BorderSide.none : const BorderSide(color: Color(0xff185794), width: 2),
+              borderSide: _isPasswordValid
+                  ? BorderSide.none
+                  : const BorderSide(color: Colors.red, width: 1),
             ),
             enabledBorder: OutlineInputBorder(
               borderRadius: BorderRadius.circular(16),
-              borderSide: _isPasswordValid ? BorderSide.none : const BorderSide(color: Color(0xff185794), width: 2),
+              borderSide: _isPasswordValid
+                  ? BorderSide.none
+                  : const BorderSide(color: Colors.red, width: 1),
             ),
             focusedBorder: OutlineInputBorder(
               borderRadius: BorderRadius.circular(16),
               borderSide: const BorderSide(color: Color(0xff185794), width: 2),
             ),
+            errorBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(16),
+              borderSide: const BorderSide(color: Colors.red, width: 1),
+            ),
+            focusedErrorBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(16),
+              borderSide: const BorderSide(color: Colors.red, width: 2),
+            ),
             suffixIcon: IconButton(
               icon: Icon(
-                _obscurePassword ? Icons.visibility_off_outlined : Icons.visibility_outlined,
+                _obscurePassword
+                    ? Icons.visibility_off_outlined
+                    : Icons.visibility_outlined,
                 color: Colors.grey.shade600,
               ),
-              onPressed: () => setState(() => _obscurePassword = !_obscurePassword),
+              onPressed: () =>
+                  setState(() => _obscurePassword = !_obscurePassword),
             ),
           ),
         ),

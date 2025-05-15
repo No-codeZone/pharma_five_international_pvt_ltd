@@ -9,6 +9,7 @@ import 'package:pharma_five/ui/admin/admin_dashboard.dart';
 import '../helper/shared_preferences.dart';
 import '../service/api_service.dart';
 import 'admin/admin_dashboard_screen.dart';
+import 'admin_approval_screen.dart';
 
 class SplashScreen extends StatefulWidget {
   @override
@@ -49,44 +50,36 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
 
 
   Future<void> _navigateAfterDelay() async {
-    await Future.delayed(const Duration(seconds: 3));
+    try {
+      await Future.delayed(const Duration(seconds: 3));
 
-    // Check internet connectivity first
-    final isConnected = await InternetConnection().hasInternetAccess;
-    if (!isConnected) {
-      _showToast("No internet connection. Please check your connection and try again.", isError: true);
-      // You could add a retry button or auto-retry mechanism here
-    }
-
-    await SharedPreferenceHelper.init();
-    final isLoggedIn = await SharedPreferenceHelper.isLoggedIn();
-    final role = await SharedPreferenceHelper.getUserType();
-    final status = await SharedPreferenceHelper.getUserStatus();
-
-    // Rest of your navigation logic remains the same
-    if (isLoggedIn) {
-      if (role == 'admin') {
-        Navigator.pushReplacement(
-          context,
-          MaterialPageRoute(builder: (_) => const AdminDashboardScreen()),
-          // MaterialPageRoute(builder: (_) => const AdminDashboard()),
-        );
-      } else if (role == 'user' && status == 'active') {
-        // Navigator.pushReplacement(
-        //   context,
-        //   MaterialPageRoute(builder: (_) => const UserDashboardScreen()),
-        // );
-      } else {
-        Navigator.pushReplacement(
-          context,
-          MaterialPageRoute(builder: (_) => const LoginScreen()),
-        );
+      final isConnected = await InternetConnection().hasInternetAccess;
+      if (!isConnected) {
+        _showToast("No internet connection. Please check and retry.", isError: true);
+        return; // Exit early
       }
-    } else {
-      Navigator.pushReplacement(
-        context,
-        MaterialPageRoute(builder: (_) => WalkthroughScreen()),
-      );
+
+      await SharedPreferenceHelper.init();
+
+      final isLoggedIn = await SharedPreferenceHelper.isLoggedIn();
+      final role = await SharedPreferenceHelper.getUserType();
+      final status = await SharedPreferenceHelper.getUserStatus();
+
+      if (isLoggedIn) {
+        if (role == 'admin') {
+          Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => const AdminDashboardScreen()));
+        } else if (role == 'user' && status == 'active') {
+          Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => const UserDashboardScreen()));
+        } else {
+          Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => const AdminApprovalScreen()));
+        }
+      } else {
+        Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => const WalkthroughScreen()));
+      }
+    } catch (e) {
+      debugPrint("Splash error: $e");
+      _showToast("An error occurred. Redirecting to login.", isError: true);
+      Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => const LoginScreen()));
     }
   }
 

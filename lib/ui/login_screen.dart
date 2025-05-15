@@ -173,7 +173,10 @@ class _LoginScreenState extends State<LoginScreen> {
         await SharedPreferenceHelper.setUserStatus(status);
 
         if (success && data != null) {
-
+          final int? sno = data['sno'];
+          if (sno != null) {
+            await SharedPreferenceHelper.setUserSno(sno); // <-- Store in session
+          }
           _showToast("${role[0].toUpperCase()}${role.substring(1)} login successful!");
 
           if (role == 'admin') {

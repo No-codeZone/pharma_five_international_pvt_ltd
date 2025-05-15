@@ -1,0 +1,2 @@
+C:/Users/DELL/Documents/pharma_five/android/app/.cxx/RelWithDebInfo/32z2f6q5/arm64-v8a/CMakeFiles/edit_cache.dir
+C:/Users/DELL/Documents/pharma_five/android/app/.cxx/RelWithDebInfo/32z2f6q5/arm64-v8a/CMakeFiles/rebuild_cache.dir

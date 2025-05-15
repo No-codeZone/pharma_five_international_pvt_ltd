@@ -3,7 +3,6 @@ import 'package:lottie/lottie.dart';
 import 'package:pharma_five/ui/registration_screen.dart';
 
 import '../helper/shared_preferences.dart';
-import 'admin/admin_dashboard.dart';
 import 'admin/admin_dashboard_screen.dart';
 import 'doctor/user_dashboard.dart';
 import 'login_screen.dart';
@@ -30,9 +29,11 @@ class _WalkthroughScreenState extends State<WalkthroughScreen> {
 
     if (isLoggedIn && userType != null) {
       Widget nextScreen =
-           // AdminDashboardScreen();
-          userType == 'admin' ? const AdminDashboardScreen() : UserDashboardScreen();
-          // userType == 'admin' ? const AdminDashboard() : UserDashboardScreen();
+          // AdminDashboardScreen();
+          userType == 'admin'
+              ? const AdminDashboardScreen()
+              : UserDashboardScreen();
+      // userType == 'admin' ? const AdminDashboard() : UserDashboardScreen();
 
       Future.microtask(() {
         Navigator.pushReplacement(
@@ -99,12 +100,14 @@ class _WalkthroughScreenState extends State<WalkthroughScreen> {
                   alignment: Alignment.center,
                   children: [
                     Positioned(
-                      child: Image.asset(
-                        'assets/animations/icons_logo_sign.gif', // Update with your GIF path
+                      /*child: Image.asset(
+                        'assets/animations/landing.json', // Update with your GIF path
                         width: 320,
                         height: 320,
                         fit: BoxFit.cover,
-                      ),
+                      ),*/
+                      child: Lottie.asset("assets/animations/walkthrough.json",
+                          height: 320, width: 320, fit: BoxFit.cover),
                     ),
                     /*Lottie.asset("assets/animations/pharma_five_landing_img.json",
                         width: 320, height: 320, fit: BoxFit.cover)*/
