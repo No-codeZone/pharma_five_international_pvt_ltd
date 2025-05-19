@@ -40,6 +40,7 @@ class _ProductListTabState extends State<ProductListTab> {
   final TextEditingController _indicationsAddController = TextEditingController();
 
   // Change this type to match what your API returns
+  ///Checking if its updated or not
   List<GetProducts> products = [];
   List<GetProducts> filteredProducts = [];
   final int _itemsPerPage = 10;
