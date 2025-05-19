@@ -207,7 +207,7 @@ class _EditFullProductScreenState extends State<EditFullProductScreen> {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: const Text('Product updated successfully'),
-            backgroundColor: Colors.green,
+            backgroundColor: Color(0xff185794),
             behavior: SnackBarBehavior.floating,
             margin: const EdgeInsets.only(top: 16, left: 16, right: 16),
           ),

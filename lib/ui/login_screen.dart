@@ -269,14 +269,18 @@ class _LoginScreenState extends State<LoginScreen> {
                     ),
                     const SizedBox(height: 16),
 
-                    const Text(
+                    // const Text(
+                    //   'Ask Pharma Five',
+                    //   style: TextStyle(fontSize: 14, color: Colors.black54),
+                    // ),
+                    /*const Text(
                       'Join us today for easy medicine',
                       style: TextStyle(fontSize: 14, color: Colors.black54),
                     ),
                     const Text(
                       'management!',
                       style: TextStyle(fontSize: 14, color: Colors.black54),
-                    ),
+                    ),*/
 
                     const SizedBox(height: 30),
 

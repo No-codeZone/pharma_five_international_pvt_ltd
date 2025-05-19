@@ -54,7 +54,9 @@ class _ProductListTabState extends State<ProductListTab> {
   bool _isEditingProduct = false;
   bool _isUpdating = false;
   Map<String, String>? _selectedProductForEdit;
-  late StreamSubscription<List<ConnectivityResult>> _connectionSubscription;
+  final Connectivity _connectivity = Connectivity();
+  late StreamSubscription<List<ConnectivityResult>> _connectivitySubscription;
+  bool _isCheckingConnectivity = false;
   bool _lastConnectionStatus = true;
   bool _isLoading = false;
   final String selectedStatus = 'all';
@@ -72,45 +74,291 @@ class _ProductListTabState extends State<ProductListTab> {
   int _currentPage = 0;
   bool _hasMore = true;
 
-
-
-
   @override
   void initState() {
     super.initState();
-    _checkInternetStatus().then((connected) {
-      if (connected) {
-        // Load all products by default when initializing
+    _searchFocusNode = FocusNode();
+
+    // First, check initial connection status
+    _checkInitialInternetStatus().then((_) {
+      // Only try to load products if we're connected
+      if (_isConnected && mounted) {
         _selectedMedicalField = null;
         loadProducts(page: 0);
       }
     });
 
-    _searchFocusNode = FocusNode();
-
-    _connectionSubscription = Connectivity().onConnectivityChanged.listen((results) async {
+    // Set up ongoing connectivity monitoring
+    _connectivitySubscription = _connectivity.onConnectivityChanged.listen((results) async {
       final connected = results.contains(ConnectivityResult.mobile) ||
           results.contains(ConnectivityResult.wifi) ||
           results.contains(ConnectivityResult.ethernet);
 
-      if (_lastConnectionStatus != connected) {
-        _lastConnectionStatus = connected;
+      // Only process if connection state actually changed
+      if (_isConnected != connected && mounted) {
         setState(() {
           _isConnected = connected;
         });
 
         Fluttertoast.showToast(
           msg: connected ? "Internet connected" : "Internet disconnected",
-          backgroundColor: connected ? Colors.green : Colors.red,
+          backgroundColor: connected ? Color(0xff185794) : Colors.red,
         );
 
-        if (connected) await loadProducts(page: 0);
+        // On reconnection, always refresh the current view
+        if (connected && mounted) {
+          // Short delay to ensure network is actually ready
+          await Future.delayed(Duration(milliseconds: 500));
+
+          // Refresh product list based on current state
+          if (_selectedMedicalField != null) {
+            await _loadProductsByField(_selectedMedicalField!, page: _currentPage);
+          } else {
+            await loadProducts(page: _currentPage);
+          }
+        }
       }
     });
   }
 
+  Future<void> _checkInitialInternetStatus() async {
+    if (_isCheckingConnectivity) return;
+    _isCheckingConnectivity = true;
+
+    try {
+      final result = await InternetAddress.lookup('google.com')
+          .timeout(const Duration(seconds: 5));
+      final connected = result.isNotEmpty && result[0].rawAddress.isNotEmpty;
+
+      if (mounted) {
+        setState(() {
+          _isConnected = connected;
+        });
+      }
+    } catch (_) {
+      if (mounted) {
+        setState(() => _isConnected = false);
+      }
+    } finally {
+      _isCheckingConnectivity = false;
+    }
+  }
+
+  Future<bool> _requestFileOperationPermissions() async {
+    // Check current connection first
+    if (!_isConnected) {
+      _showToast("No internet connection", isError: true);
+      return false;
+    }
+
+    // Platform-specific permission handling
+    if (Platform.isAndroid) {
+      return await _requestAndroidPermissions();
+    } else if (Platform.isIOS) {
+      return await _requestIOSPermissions();
+    } else {
+      // Default fallback for other platforms
+      _showToast("File operations may not be fully supported on this platform", isError: true);
+      return true;
+    }
+  }
+
+  Future<bool> _requestAndroidPermissions() async {
+    final deviceInfo = DeviceInfoPlugin();
+    final androidInfo = await deviceInfo.androidInfo;
+    final sdkInt = androidInfo.version.sdkInt;
+
+    // Android 13+ (API 33+)
+    if (sdkInt >= 33) {
+      // Request READ_MEDIA_IMAGES for accessing media files
+      final photosStatus = await Permission.photos.request();
+      // Request READ_MEDIA_DOCUMENTS for importing Excel files
+      final documentsStatus = await Permission.mediaLibrary.request();
+
+      if (photosStatus.isGranted && documentsStatus.isGranted) {
+        return true;
+      }
+
+      if (photosStatus.isPermanentlyDenied || documentsStatus.isPermanentlyDenied) {
+        _showPermissionSettingsDialog(
+            "Media access required",
+            "Access to photos and documents is required for importing and exporting Excel files."
+        );
+        return false;
+      }
+
+      if (photosStatus.isDenied || documentsStatus.isDenied) {
+        _showToast("Media permissions are required for Excel operations", isError: true);
+        return false;
+      }
+    }
+    // Android 11-12 (API 30-32)
+    else if (sdkInt >= 30) {
+      // Try regular storage permission first
+      final storageStatus = await Permission.storage.request();
+
+      if (storageStatus.isGranted) {
+        // For Android 11+, we need MANAGE_EXTERNAL_STORAGE for full access
+        final manageStatus = await Permission.manageExternalStorage.request();
+        if (manageStatus.isGranted) {
+          return true;
+        }
+
+        // If basic storage permission is granted but not manage, we can still try
+        // to use more restricted access methods (scoped storage)
+        if (manageStatus.isPermanentlyDenied) {
+          _showPermissionSettingsDialog(
+              "Storage access limited",
+              "For full access to manage files, additional permissions are needed. " +
+                  "Excel files will be saved to app-specific folders.",
+              isWarningOnly: true
+          );
+        }
+        return true;
+      }
+
+      if (storageStatus.isPermanentlyDenied) {
+        _showPermissionSettingsDialog(
+            "Storage access required",
+            "Storage access is required for importing and exporting Excel files."
+        );
+        return false;
+      }
+    }
+    // Android 10 and below (API 29-)
+    else {
+      final status = await Permission.storage.request();
+
+      if (status.isGranted) {
+        return true;
+      }
+
+      if (status.isPermanentlyDenied) {
+        _showPermissionSettingsDialog(
+            "Storage access required",
+            "Storage access is required for importing and exporting Excel files."
+        );
+        return false;
+      }
+    }
+
+    _showToast("Storage permissions are needed for Excel operations", isError: true);
+    return false;
+  }
+
+  Future<bool> _requestIOSPermissions() async {
+    final documentsStatus = await Permission.storage.request();
+
+    if (documentsStatus.isGranted) {
+      return true;
+    }
+
+    if (documentsStatus.isPermanentlyDenied) {
+      _showPermissionSettingsDialog(
+          "Storage access required",
+          "This app needs permission to store Excel files in your device's Documents directory."
+      );
+      return false;
+    }
+
+    _showToast("Storage permission is required for Excel file operations.", isError: true);
+    return false;
+  }
+
+  void _showPermissionSettingsDialog(String title, String message, {bool isWarningOnly = false}) {
+    showDialog(
+      context: context,
+      builder: (BuildContext context) => AlertDialog(
+        title: Text(title),
+        content: SingleChildScrollView(
+          child: ListBody(
+            children: <Widget>[
+              Text(message),
+              const SizedBox(height: 10),
+              if (!isWarningOnly)
+                Text(
+                  'To fix this, you need to enable permissions in your device settings.',
+                  style: TextStyle(fontStyle: FontStyle.italic, fontSize: 12),
+                ),
+            ],
+          ),
+        ),
+        actions: <Widget>[
+          TextButton(
+            child: const Text('Cancel'),
+            onPressed: () => Navigator.of(context).pop(),
+          ),
+          if (!isWarningOnly)
+            TextButton(
+              child: const Text('Open Settings'),
+              onPressed: () {
+                Navigator.of(context).pop();
+                openAppSettings();
+              },
+            ),
+          if (isWarningOnly)
+            TextButton(
+              child: const Text('Continue Anyway'),
+              onPressed: () {
+                Navigator.of(context).pop();
+              },
+            ),
+        ],
+      ),
+    );
+  }
+
+  Future<Directory?> _getAppropriateDirectory() async {
+    Directory? directory;
+
+    try {
+      if (Platform.isAndroid) {
+        final deviceInfo = DeviceInfoPlugin();
+        final androidInfo = await deviceInfo.androidInfo;
+        final sdkInt = androidInfo.version.sdkInt;
+
+        if (sdkInt >= 30) {
+          // Android 11+ (API 30+)
+          final manageStatus = await Permission.manageExternalStorage.status;
+          if (manageStatus.isGranted) {
+            directory = Directory("/storage/emulated/0/Download");
+            if (!await directory.exists()) {
+              directory = await getExternalStorageDirectory();
+            }
+          } else {
+            // Use app-specific external directory (scoped storage)
+            directory = await getExternalStorageDirectory();
+          }
+        } else {
+          // Android 10 and below
+          directory = Directory("/storage/emulated/0/Download");
+          if (!await directory.exists()) {
+            directory = await getExternalStorageDirectory();
+          }
+        }
+      } else if (Platform.isIOS) {
+        // ✅ Use Documents directory – visible in Files app, safe for .xlsx
+        directory = await getApplicationDocumentsDirectory();
+      } else {
+        // Fallback for other platforms
+        directory = await getApplicationDocumentsDirectory();
+      }
+
+      return directory;
+    } catch (e) {
+      // Catch any exception and fallback to application documents directory
+      debugPrint("Directory access error: $e");
+      return await getApplicationDocumentsDirectory();
+    }
+  }
+
   // 2️⃣ Search method
   Future<void> _searchProducts(String searchTerm) async {
+    if (!_isConnected) {
+      _showToast("No internet connection", isError: true);
+      return;
+    }
+
     if (searchTerm.trim().isEmpty) {
       setState(() {
         _currentProductPage = 0;
@@ -281,8 +529,13 @@ class _ProductListTabState extends State<ProductListTab> {
   }
 
   Future<void> _loadProductsByField(String field, {int page = 0}) async {
+    if (!_isConnected) {
+      _showToast("No internet connection", isError: true);
+      return;
+    }
+
     setState(() {
-      isProductLoading = true; // Use existing loading flag for consistency
+      isProductLoading = true;
       _selectedMedicalField = field;
       _currentPage = page;
     });
@@ -303,28 +556,34 @@ class _ProductListTabState extends State<ProductListTab> {
         ))
             .toList();
 
-        setState(() {
-          products = converted;
-          filteredProducts = converted;
-          _totalProductCount = resp.totalCount ?? converted.length;
-          _hasMoreProduct = ((page + 1) * _itemsPerPage) < _totalProductCount;
-          isProductLoading = false;
-        });
+        if (mounted) {
+          setState(() {
+            products = converted;
+            filteredProducts = converted;
+            _totalProductCount = resp.totalCount ?? converted.length;
+            _hasMoreProduct = ((page + 1) * _itemsPerPage) < _totalProductCount;
+            isProductLoading = false;
+          });
+        }
       } else {
-        setState(() {
-          products = [];
-          filteredProducts = [];
-          _hasMoreProduct = false;
-          isProductLoading = false;
-        });
+        if (mounted) {
+          setState(() {
+            products = [];
+            filteredProducts = [];
+            _hasMoreProduct = false;
+            isProductLoading = false;
+          });
+        }
       }
     } catch (e) {
-      setState(() {
-        isProductLoading = false;
-        products = [];
-        filteredProducts = [];
-      });
-      _showToast("Error loading $field products: $e", isError: true);
+      if (mounted) {
+        setState(() {
+          isProductLoading = false;
+          products = [];
+          filteredProducts = [];
+        });
+        _showToast("Error loading $field products: $e", isError: true);
+      }
     }
   }
 
@@ -394,16 +653,12 @@ class _ProductListTabState extends State<ProductListTab> {
     );
   }
 
-  Future<bool> _checkInternetStatus() async {
-    try {
-      final result = await InternetAddress.lookup('google.com');
-      return result.isNotEmpty && result[0].rawAddress.isNotEmpty;
-    } on SocketException {
-      return false;
-    }
-  }
-
   Future<void> loadProducts({int page = 0}) async {
+    if (!_isConnected) {
+      _showToast("No internet connection", isError: true);
+      return;
+    }
+
     setState(() {
       isProductLoading = true;
       _currentPage = page;
@@ -424,31 +679,139 @@ class _ProductListTabState extends State<ProductListTab> {
         ))
             .toList();
 
-        setState(() {
-          products = converted;
-          filteredProducts = converted;
-          _totalProductCount = response.totalCount ?? 0;
-          _hasMoreProduct = ((page + 1) * _itemsPerPage) < _totalProductCount;
-          isProductLoading = false;
-        });
+        if (mounted) {
+          setState(() {
+            products = converted;
+            filteredProducts = converted;
+            _totalProductCount = response.totalCount ?? 0;
+            _hasMoreProduct = ((page + 1) * _itemsPerPage) < _totalProductCount;
+            isProductLoading = false;
+          });
+        }
       } else {
-        setState(() {
-          products = [];
-          filteredProducts = [];
-          _hasMoreProduct = false;
-          isProductLoading = false;
-        });
+        if (mounted) {
+          setState(() {
+            products = [];
+            filteredProducts = [];
+            _hasMoreProduct = false;
+            isProductLoading = false;
+          });
+        }
       }
     } catch (e) {
-      setState(() {
-        isProductLoading = false;
-        products = [];
-        filteredProducts = [];
-      });
-      _showToast("Error loading page $page: $e", isError: true);
+      if (mounted) {
+        setState(() {
+          isProductLoading = false;
+          products = [];
+          filteredProducts = [];
+        });
+        _showToast("Error loading page $page: $e", isError: true);
+      }
     }
   }
 
+  Future<void> _pickAndUploadExcelFile() async {
+    Navigator.of(context).pop(); // Close confirmation dialog
+
+    final hasPermission = await _requestFileOperationPermissions();
+    if (!hasPermission) return;
+
+    try {
+      FilePickerResult? result = await FilePicker.platform.pickFiles(
+        type: FileType.custom,
+        allowedExtensions: ['xlsx'],
+        allowMultiple: false,
+        lockParentWindow: true,
+      );
+
+      if (result == null || result.files.single.path == null) return;
+      final file = File(result.files.single.path!);
+
+      if (!await file.exists()) {
+        _showToast("Selected file doesn't exist", isError: true);
+        return;
+      }
+
+      final fileSize = await file.length();
+      if (fileSize > 10 * 1024 * 1024) {
+        _showToast("File is too large. Max: 10MB", isError: true);
+        return;
+      }
+
+      // Show loader
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (loaderContext) {
+          return AlertDialog(
+            backgroundColor: Colors.white,
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Lottie.asset('assets/animations/uploading.json', width: 150, height: 150),
+                const SizedBox(height: 16),
+                const Text("This might take some time...", style: TextStyle(fontWeight: FontWeight.bold)),
+                const SizedBox(height: 8),
+                const Text("Uploading...", style: TextStyle(fontWeight: FontWeight.bold)),
+              ],
+            ),
+          );
+        },
+      );
+
+      // Set 90s timeout
+      bool timedOut = false;
+      final timer = Timer(const Duration(seconds: 90), () {
+        timedOut = true;
+        if (mounted) {
+          Navigator.of(context, rootNavigator: true).pop(); // Close loader
+          showDialog(
+            context: context,
+            builder: (context) => AlertDialog(
+              title: const Text("Timeout"),
+              content: const Text("Try after sometime"),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(context),
+                  child: const Text("OK"),
+                )
+              ],
+            ),
+          );
+        }
+      });
+
+      try {
+        final response = await _apiService.uploadBulkProductList(file);
+        if (timer.isActive) timer.cancel(); // Cancel timeout if finished early
+        if (!mounted || timedOut) return;
+
+        Navigator.of(context, rootNavigator: true).pop(); // Close loader
+
+        if (response != null && response.toLowerCase().contains("uploaded")) {
+          _showToast(response);
+          await loadProducts(page: _currentProductPage);
+        } else {
+          _showToast(response ?? "Upload failed", isError: true);
+        }
+      } catch (e) {
+        if (timer.isActive) timer.cancel();
+        if (!mounted || timedOut) return;
+
+        Navigator.of(context, rootNavigator: true).pop(); // Close loader
+        _showToast("Upload failed: ${e.toString()}", isError: true);
+      }
+    } catch (e) {
+      _showToast("Error: ${e.toString()}", isError: true);
+    }
+  }
+
+  void _closeLoaderDialogIfOpen() {
+    if (Navigator.canPop(context)) {
+      Navigator.of(context, rootNavigator: true).pop();
+    }
+  }
 
   void onSearchChanged() {
     if (_searchDebounce?.isActive ?? false) _searchDebounce!.cancel();
@@ -470,10 +833,19 @@ class _ProductListTabState extends State<ProductListTab> {
     );
   }
 
-  void _showToast(String message, {bool isError = false}) {
+  void _showToast(String message, {bool isError = false, bool isWarning = false}) {
+    Color backgroundColor;
+    if (isError) {
+      backgroundColor = Colors.red.shade700;
+    } else if (isWarning) {
+      backgroundColor = Colors.orange.shade700;
+    } else {
+      backgroundColor = Color(0xff185794);
+    }
+
     Fluttertoast.showToast(
       msg: message,
-      backgroundColor: isError ? Colors.red.shade700 : Colors.green.shade700,
+      backgroundColor: backgroundColor,
       textColor: Colors.white,
       fontSize: 16.0,
       toastLength: Toast.LENGTH_LONG,
@@ -484,10 +856,10 @@ class _ProductListTabState extends State<ProductListTab> {
 
   @override
   void dispose() {
-    // Cancel the debounce timer when disposing
+    _connectivitySubscription.cancel();
     _searchDebounce?.cancel();
-    _connectionSubscription.cancel();
     _searchController.dispose();
+    _searchFocusNode.dispose();
     _medicineNameEditController.dispose();
     _genericNameEditController.dispose();
     _manufacturerEditController.dispose();
@@ -498,15 +870,6 @@ class _ProductListTabState extends State<ProductListTab> {
     _indicationsAddController.dispose();
     super.dispose();
   }
-
-  /*@override
-  Widget build(BuildContext context) {
-    return _isEditingProduct
-        ? _buildEditProductScreen()
-        : _isAddingProduct
-        ? _buildAddProductScreen()
-        : adminProductListing();
-  }*/
 
   @override
   Widget build(BuildContext context) {
@@ -522,78 +885,76 @@ class _ProductListTabState extends State<ProductListTab> {
     setState(() => _isLoading = true);
 
     try {
-      if (!_isConnected) {
-        _showToast("No internet connection", isError: true);
-        setState(() => _isLoading = false);
-        return;
-      }
-
-      final hasPermission = await _requestStoragePermission();
+      final hasPermission = await _requestFileOperationPermissions();
       if (!hasPermission) {
         setState(() => _isLoading = false);
         return;
       }
 
-      final url = Uri.parse("http://13.49.224.44:8080/api/product/download");
-      final filename = "product_list_${DateTime.now().millisecondsSinceEpoch}.xlsx";
+      _showToast("Downloading Excel file...");
 
-      // Get appropriate directory per platform
-      Directory? directory;
-      if (Platform.isAndroid) {
-        // First try the Download directory
-        try {
-          directory = Directory("/storage/emulated/0/Download");
-          if (!(await directory.exists())) {
-            // Fall back to app-specific directory
-            directory = await getExternalStorageDirectory();
-          }
-        } catch (e) {
-          // Final fallback
-          directory = await getApplicationDocumentsDirectory();
-        }
-      } else if (Platform.isIOS) {
-        directory = await getApplicationDocumentsDirectory();
-      } else {
-        directory = await getApplicationDocumentsDirectory();
-      }
-
+      final directory = await _getAppropriateDirectory();
       if (directory == null) {
         _showToast("Failed to access storage directory", isError: true);
         setState(() => _isLoading = false);
         return;
       }
 
+      final url = Uri.parse("http://13.49.224.44:8080/api/product/download");
+      final filename = "product_list_${DateTime.now().millisecondsSinceEpoch}.xlsx";
       final downloadPath = "${directory.path}/$filename";
 
-      // Show downloading progress indicator
-      _showToast("Downloading Excel file...");
-
-      final response = await http.get(url);
+      final response = await http.get(url).timeout(
+        const Duration(seconds: 30),
+        onTimeout: () => throw TimeoutException("The connection timed out."),
+      );
 
       if (response.statusCode == 200) {
         final file = File(downloadPath);
         await file.writeAsBytes(response.bodyBytes);
 
+        if (Platform.isIOS) {
+          try {
+            await file.setLastModified(DateTime.now());
+          } catch (e) {
+            debugPrint("iOS file tag error: $e");
+          }
+        }
+
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
               content: Text("Excel downloaded to: $downloadPath"),
-              backgroundColor: Colors.green.shade700,
+              backgroundColor: Color(0xff185794),
               duration: const Duration(seconds: 4),
               action: SnackBarAction(
                 label: "Open",
                 textColor: Colors.white,
-                onPressed: () => OpenFile.open(downloadPath),
+                onPressed: () async {
+                  try {
+                    await OpenFile.open(downloadPath);
+                  } catch (e) {
+                    _showToast("Unable to open file: $e", isError: true);
+                  }
+                },
               ),
             ),
           );
         }
+      } else if (response.statusCode == 401 || response.statusCode == 403) {
+        _showToast("Authorization error. Please log in again.", isError: true);
+      } else if (response.statusCode >= 500) {
+        _showToast("Server error. Please try again later.", isError: true);
       } else {
-        _showToast("Failed to download Excel file (Status: ${response.statusCode})", isError: true);
+        _showToast("Download failed: ${response.statusCode}", isError: true);
       }
+    } on SocketException {
+      _showToast("Network error. Please check your internet.", isError: true);
+    } on TimeoutException {
+      _showToast("Download timed out. Please try again.", isError: true);
     } catch (e) {
-      print("Download error: $e");
-      _showToast("Error: ${e.toString()}", isError: true);
+      debugPrint("Download error: $e");
+      _showToast("Unexpected error: $e", isError: true);
     } finally {
       setState(() => _isLoading = false);
     }
@@ -621,7 +982,8 @@ class _ProductListTabState extends State<ProductListTab> {
     }
 
     return Scaffold(
-      body: Container(
+      body:
+      Container(
         decoration: const BoxDecoration(color: Colors.white),
         child: Padding(
           padding: const EdgeInsets.all(12),
@@ -658,7 +1020,6 @@ class _ProductListTabState extends State<ProductListTab> {
                         },
                         decoration: InputDecoration(
                           hintText: 'Search products…',
-                          prefixIcon: const Icon(Icons.search, size: 20),
                           suffixIcon: Row(
                             mainAxisSize: MainAxisSize.min,
                             children: [
@@ -672,10 +1033,10 @@ class _ProductListTabState extends State<ProductListTab> {
                                 ),
                               IconButton(
                                 icon: _isSearchLoading
-                                    ? SizedBox(
+                                    ? const SizedBox(
                                   width: 20,
                                   height: 20,
-                                  child: CircularProgressIndicator(strokeWidth: 2),
+                                  child: CircularProgressIndicator(color: Color(0xff185794),strokeWidth: 2),
                                 )
                                     : const Icon(Icons.search, size: 20),
                                 onPressed: () async {
@@ -691,7 +1052,7 @@ class _ProductListTabState extends State<ProductListTab> {
                             borderRadius: BorderRadius.circular(10),
                             borderSide: BorderSide.none,
                           ),
-                          contentPadding: const EdgeInsets.symmetric(vertical: 0),
+                          contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 0), // ✅ updated here
                         ),
                       ),
                     ),
@@ -756,31 +1117,33 @@ class _ProductListTabState extends State<ProductListTab> {
               // Show search error if present
               _buildSearchError(),
 
+              _buildConnectionBanner(),
               // Product List + Pull to Refresh
               Expanded(
-                child: RefreshIndicator(
-                    onRefresh: () async {
-                      if (_selectedMedicalField != null) {
-                        await _loadProductsByField(_selectedMedicalField!, page: _currentPage);
-                      } else {
-                        await loadProducts(page: _currentPage);
-                      }
-                      // Fluttertoast.showToast(
-                      //   msg: "Products refreshed",
-                      //   backgroundColor: Colors.green,
-                      // );
-                      _showToast("Products refreshed",isError: false);
-                    },
-                    color: const Color(0xff185794),
-                    strokeWidth: 2.5,
-                    displacement: 40,
-                    child: isProductLoading
-                        ? const Center(child: CircularProgressIndicator())
-                        : !_isConnected
-                        ? _buildNoInternetWidget()
-                        : filteredProducts.isEmpty
-                        ? _buildNoDataWidget()
-                        : _buildProductList()
+                child: !_isConnected
+                    ? _buildNoInternetWidget()
+                    : isProductLoading
+                    ? const Center(
+                  child: CircularProgressIndicator(
+                    color: Color(0xff185794),
+                  ),
+                )
+                    : filteredProducts.isEmpty
+                    ? _buildNoDataWidget()
+                    :
+                RefreshIndicator(
+                  onRefresh: () async {
+                    if (_selectedMedicalField != null) {
+                      await _loadProductsByField(_selectedMedicalField!, page: _currentPage);
+                    } else {
+                      await loadProducts(page: _currentPage);
+                    }
+                    _showToast("Products refreshed", isError: false);
+                  },
+                  color: const Color(0xff185794),
+                  strokeWidth: 2.5,
+                  displacement: 40,
+                  child: _buildProductList(),
                 ),
               ),
 
@@ -913,60 +1276,21 @@ class _ProductListTabState extends State<ProductListTab> {
     );
   }
 
-  Widget _buildAddProductScreen() {
-    if (!_isConnected) {
-      return Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Lottie.asset(
-              "assets/animations/internet.json",
-              width: 250,
-              height: 250,
-            ),
-            const SizedBox(height: 16),
-            const Text(
-              'No Internet Connection',
-              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.grey),
-            ),
-          ],
-        ),
-      );
-    }
+  Widget _buildConnectionBanner() {
+    if (_isConnected) return const SizedBox.shrink();
 
-    return Center(
-      child: AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-        title: const Text('Add Products', style: TextStyle(fontWeight: FontWeight.bold)),
-        content: const Text('Do you want to proceed with bulk upload?'),
-        actions: [
-          TextButton(
-            onPressed: () => setState(() => _isAddingProduct = false),
-            child: const Text('Cancel', style: TextStyle(color: Colors.grey)),
-          ),
-          ElevatedButton(
-            style: ElevatedButton.styleFrom(backgroundColor: const Color(0xff262A88)),
-            onPressed: () {
-              Navigator.of(context).pop(); // Close AlertDialog
-              showDialog(
-                context: context,
-                builder: (_) => BulkUploadWidget(
-                  onFileSelected: (file) async {
-                    _showToast("Uploading Excel file...", isError: false);
-                    final response = await _apiService.uploadBulkProductList(file);
-                    _showToast(response ?? "Bulk upload completed.");
-                    await Future.delayed(const Duration(seconds: 2));
-                    try {
-                      await loadProducts(page: _currentPage);
-                    } catch (e) {
-                      _showToast("Upload succeeded but failed to refresh list.", isError: true);
-                    }
-                    setState(() => _isAddingProduct = false);
-                  },
-                ),
-              );
-            },
-            child: const Text('Proceed', style: TextStyle(color: Colors.white)),
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(vertical: 6),
+      color: Colors.orange.shade100,
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: const [
+          Icon(Icons.wifi_off, size: 16, color: Colors.orange),
+          SizedBox(width: 8),
+          Text(
+            'Waiting for connection...',
+            style: TextStyle(color: Colors.orange, fontSize: 12),
           ),
         ],
       ),
@@ -989,58 +1313,8 @@ class _ProductListTabState extends State<ProductListTab> {
                     style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
                 const SizedBox(height: 20),
                 GestureDetector(
-                    onTap: () async {
-                      Navigator.of(dialogContext).pop(); // Close the confirmation dialog
-
-                      FilePickerResult? result = await FilePicker.platform.pickFiles(
-                        type: FileType.custom,
-                        allowedExtensions: ['xlsx'],
-                      );
-
-                      if (result != null && result.files.single.path != null) {
-                        final file = File(result.files.single.path!);
-
-                        // Show loader dialog with Lottie
-                        showDialog(
-                          context: context,
-                          barrierDismissible: false,
-                          builder: (BuildContext loaderContext) {
-                            return AlertDialog(
-                              backgroundColor: Colors.white,
-                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                              content: Column(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  Lottie.asset('assets/animations/uploading.json', width: 150, height: 150),
-                                  const SizedBox(height: 16),
-                                  const Text("Uploading...", style: TextStyle(fontWeight: FontWeight.bold)),
-                                ],
-                              ),
-                            );
-                          },
-                        );
-
-                        try {
-                          final response = await _apiService.uploadBulkProductList(file);
-
-                          if (!mounted) return;
-                          Navigator.of(context, rootNavigator: true).pop(); // Close loader dialog
-
-                          if (response != null) {
-                            _showToast(response, isError: false);
-                            await Future.delayed(const Duration(seconds: 2));
-                            await loadProducts(page: _currentPage);
-                          } else {
-                            _showToast("No response from server.", isError: true);
-                          }
-                        } catch (e) {
-                          if (!mounted) return;
-                          Navigator.of(context, rootNavigator: true).pop(); // Close loader dialog
-                          _showToast("Upload failed: ${e.toString()}", isError: true);
-                        }
-                      }
-                    },
-                    child: Container(
+                  onTap: _pickAndUploadExcelFile,
+                  child: Container(
                     padding: const EdgeInsets.symmetric(vertical: 32, horizontal: 64),
                     decoration: BoxDecoration(
                       border: Border.all(color: Colors.grey.shade400, width: 1.5),
@@ -1061,6 +1335,11 @@ class _ProductListTabState extends State<ProductListTab> {
                       ],
                     ),
                   ),
+                ),
+                const SizedBox(height: 12),
+                Text(
+                  "Supported file: Excel (.xlsx) | Max size: 10MB",
+                  style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
                 ),
               ],
             ),
@@ -1112,7 +1391,7 @@ class _ProductListTabState extends State<ProductListTab> {
   Widget buildTableRow(int index, GetProducts product) {
     return Card(
       color: Colors.white,
-      margin: const EdgeInsets.symmetric(vertical: 4, horizontal: 2),
+      margin: const EdgeInsets.symmetric( horizontal: 2,vertical: 2),
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
         child: Row(
@@ -1141,13 +1420,12 @@ class _ProductListTabState extends State<ProductListTab> {
             ),
             // Actions as PopupMenu
             PopupMenuButton<String>(
-              color: Color(0xff185794),
+              color: const Color(0xff185794),
               elevation: 10,
               iconColor: Colors.white,
               tooltip: 'Actions',
-              onSelected: (value) async{
+              onSelected: (value) async {
                 if (value == 'view') {
-                  // _viewProductDialog(product);
                   showDialog(
                     context: context,
                     barrierDismissible: false,
@@ -1178,7 +1456,6 @@ class _ProductListTabState extends State<ProductListTab> {
                   );
 
                   final response = await ApiService().fetchProductDetailsBySerialNo(product.serialNo ?? 0);
-
                   Navigator.of(context).pop(); // Close Lottie loader
 
                   if (response != null &&
@@ -1219,7 +1496,6 @@ class _ProductListTabState extends State<ProductListTab> {
                   );
 
                   final response = await ApiService().fetchProductDetailsBySerialNo(product.serialNo ?? 0);
-
                   Navigator.pop(context); // Close the loader
 
                   if (response != null &&
@@ -1240,8 +1516,7 @@ class _ProductListTabState extends State<ProductListTab> {
                   } else {
                     _showToast("Failed to load full product details", isError: true);
                   }
-                }
-                else if (value == 'delete') {
+                } else if (value == 'delete') {
                   _showDeleteConfirmationDialog(product);
                 }
               },
@@ -1249,17 +1524,19 @@ class _ProductListTabState extends State<ProductListTab> {
                 const PopupMenuItem(
                   value: 'view',
                   child: ListTile(
-                    leading: Icon(Icons.visibility,color: Colors.white,),
-                    title: Text('View',style: TextStyle(color: Colors.white)),
+                    leading: Icon(Icons.visibility, color: Colors.white),
+                    title: Text('View', style: TextStyle(color: Colors.white)),
                   ),
                 ),
+                const PopupMenuDivider(height: 1), // Divider 1
                 const PopupMenuItem(
                   value: 'edit',
                   child: ListTile(
-                    leading: Icon(Icons.edit,color: Colors.white,),
-                    title: Text('Edit',style: TextStyle(color: Colors.white)),
+                    leading: Icon(Icons.edit, color: Colors.white),
+                    title: Text('Edit', style: TextStyle(color: Colors.white)),
                   ),
                 ),
+                const PopupMenuDivider(height: 1), // Divider 2
                 const PopupMenuItem(
                   value: 'delete',
                   child: ListTile(
@@ -1268,8 +1545,8 @@ class _ProductListTabState extends State<ProductListTab> {
                   ),
                 ),
               ],
-              icon: Icon(Icons.more_vert, color: Color(0xff185794),),
-            ),
+              icon: const Icon(Icons.more_vert, color: Color(0xff185794)),
+            )
           ],
         ),
       ),
@@ -1375,82 +1652,32 @@ class _ProductListTabState extends State<ProductListTab> {
     }
   }
 
-  void _viewProductDialog(GetProducts product) {
-    showDialog(
-      context: context,
-      builder: (_) => AlertDialog(
-        title: const Text('Product Details'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text("Medicine: ${product.medicineName ?? '-'}"),
-            Text("Generic: ${product.genericName ?? '-'}"),
-            // Text("Manufactured By: ${product.manufacturedBy ?? '-'}"),
-            // Text("Indication: ${product.indication ?? '-'}"),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(),
-            child: const Text("Close"),
-          ),
-        ],
-      ),
-    );
-  }
-
-  void _editProduct(GetProductsContent product) {
-    setState(() {
-      _selectedProductForEdit = {
-        'serialNo': product.serialNo?.toString() ?? '',
-        'medicineName': product.medicineName ?? '',
-        'genericName': product.genericName ?? '',
-        'manufacturedBy': product.manufacturedBy ?? '',
-        'indication': product.indication ?? '',
-      };
-      _isEditingProduct = true;
-      _medicineNameEditController.text = product.medicineName ?? '';
-      _genericNameEditController.text = product.genericName ?? '';
-      _manufacturerEditController.text = product.manufacturedBy ?? '';
-      _indicationsEditController.text = product.indication ?? '';
-    });
-  }
-
   Widget buildProductPagination() {
     if (filteredProducts.isEmpty && _currentProductPage == 0) {
       return const SizedBox.shrink(); // No pagination if no products on first page
     }
-
     // Calculate total pages based on total product count
     final int productsPerPage = 10;
     final int totalPages = (_totalProductCount / productsPerPage).ceil();
-
     // If we don't have total count but have hasMore flag
     final int maxPageToShow = _totalProductCount > 0
         ? totalPages
         : _currentProductPage + (_hasMoreProduct ? 2 : 1);
-
     // Don't show any pagination if we have nothing
     if (maxPageToShow <= 1 && filteredProducts.isEmpty) {
       return const SizedBox.shrink();
     }
-
     // Calculate a reasonable range of pages to show
     int totalPagesToShow = 5; // Show max 5 page buttons at a time
     int startPage = max(0, min(_currentProductPage - 2, maxPageToShow - totalPagesToShow));
     int endPage = min(startPage + totalPagesToShow - 1, maxPageToShow - 1);
-
     // Ensure we don't show non-existent pages
     endPage = max(0, min(endPage, maxPageToShow - 1));
-
     final double screenWidth = MediaQuery.of(context).size.width;
     final bool isSmallScreen = screenWidth < 400;
     final bool isTablet = screenWidth >= 600;
-
     final double buttonSize = isSmallScreen ? 26 : isTablet ? 36 : 30;
     final double fontSize = isSmallScreen ? 13 : isTablet ? 17 : 15;
-
     return Align(
       alignment: Alignment.bottomLeft,
       child: Container(
@@ -1480,7 +1707,6 @@ class _ProductListTabState extends State<ProductListTab> {
                   ),
                 ),
               ),
-
             // Page number buttons - only show pages that should exist
             ...List.generate(endPage - startPage + 1, (index) {
               final int pageNumber = startPage + index;
@@ -1490,7 +1716,6 @@ class _ProductListTabState extends State<ProductListTab> {
               if (pageNumber >= maxPageToShow) {
                 return const SizedBox.shrink();
               }
-
               return InkWell(
                 onTap: () {
                   if (_currentProductPage != pageNumber) {
@@ -1523,7 +1748,6 @@ class _ProductListTabState extends State<ProductListTab> {
                 ),
               );
             }),
-
             // Next page button - only if there are more products
             if (_currentProductPage < maxPageToShow - 1 && _hasMoreProduct)
               InkWell(
@@ -1551,7 +1775,6 @@ class _ProductListTabState extends State<ProductListTab> {
       ),
     );
   }
-
   Widget _buildNoInternetWidget() {
     return Center(
       child: Column(
@@ -1559,27 +1782,20 @@ class _ProductListTabState extends State<ProductListTab> {
         children: [
           Lottie.asset(
             "assets/animations/internet.json",
-            width: 250,
-            height: 250,
+            width: 200,
+            height: 200,
             fit: BoxFit.contain,
           ),
           const SizedBox(height: 16),
           const Text(
             'No Internet Connection',
             style: TextStyle(
-                fontSize: 18,
-                fontWeight: FontWeight.bold,
-                color: Colors.grey
+              fontSize: 16,
+              fontWeight: FontWeight.w500,
+              color: Colors.grey,
             ),
           ),
-          /*const SizedBox(height: 8),
-          IconButton(
-            onPressed: () async {
-              final connected = await _updateInternetStatus();
-              if (connected) await loadProducts();
-            },
-            icon: Icon(Icons.refresh,color: Color(0xff185794), size: 40,),
-          ),*/
+          const SizedBox(height: 6),
         ],
       ),
     );
@@ -1632,59 +1848,28 @@ class _ProductListTabState extends State<ProductListTab> {
     );
   }
   Widget _buildPagination() {
-    // Don't show pagination if there are no products on first page
     if (filteredProducts.isEmpty && _currentPage == 0) {
-      return const SizedBox.shrink();
+      return const SizedBox.shrink(); // No pagination needed
     }
 
-    // Calculate total pages based on total product count
     final int totalPages = (_totalProductCount / _itemsPerPage).ceil();
+    const int maxPagesToShow = 7;
 
-    // Use appropriate range of pages to show
-    int totalPagesToShow = 5; // Show max 5 page buttons at a time
-    int startPage = max(0, min(_currentPage - 2, totalPages - totalPagesToShow));
-    int endPage = min(startPage + totalPagesToShow - 1, totalPages - 1);
+    int startPage = max(0, min(_currentPage - (maxPagesToShow ~/ 2), totalPages - maxPagesToShow));
+    int endPage = min(startPage + maxPagesToShow - 1, totalPages - 1);
 
-    // Ensure we don't show negative pages
-    endPage = max(0, min(endPage, totalPages - 1));
-
-    // Handle responsive sizes
-    final double screenWidth = MediaQuery.of(context).size.width;
-    final bool isSmallScreen = screenWidth < 400;
-    final bool isTablet = screenWidth >= 600;
-
-    final double buttonSize = isSmallScreen ? 26 : isTablet ? 36 : 30;
-    final double fontSize = isSmallScreen ? 13 : isTablet ? 17 : 15;
+    // ✅ Fixed-size: smaller button & font
+    final double buttonSize = 30;
+    final double fontSize = 14;
 
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 10),
+      padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 16),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
           // Previous page button
           if (_currentPage > 0)
-            InkWell(
-              onTap: () {
-                final prevPage = _currentPage - 1;
-                if (_selectedMedicalField != null) {
-                  _loadProductsByField(_selectedMedicalField!, page: prevPage);
-                } else {
-                  loadProducts(page: prevPage);
-                }
-              },
-              borderRadius: BorderRadius.circular(6),
-              splashColor: Colors.grey.shade300,
-              child: Container(
-                width: buttonSize,
-                height: buttonSize,
-                alignment: Alignment.center,
-                child: Icon(
-                  Icons.chevron_left,
-                  color: const Color(0xff185794),
-                  size: fontSize + 2,
-                ),
-              ),
-            ),
+            _buildPageArrow(isNext: false, fontSize: fontSize, buttonSize: buttonSize),
 
           // Page number buttons
           ...List.generate(endPage - startPage + 1, (index) {
@@ -1726,33 +1911,39 @@ class _ProductListTabState extends State<ProductListTab> {
             );
           }),
 
-          // Next page button - only if there are more products
+          // Next page button
           if (_currentPage < totalPages - 1 && _hasMore)
-            InkWell(
-              onTap: () {
-                final nextPage = _currentPage + 1;
-                if (_selectedMedicalField != null) {
-                  _loadProductsByField(_selectedMedicalField!, page: nextPage);
-                } else {
-                  loadProducts(page: nextPage);
-                }
-              },
-              borderRadius: BorderRadius.circular(6),
-              splashColor: Colors.grey.shade300,
-              child: Container(
-                width: buttonSize,
-                height: buttonSize,
-                alignment: Alignment.center,
-                child: Icon(
-                  Icons.chevron_right,
-                  color: const Color(0xff185794),
-                  size: fontSize + 2,
-                ),
-              ),
-            ),
+            _buildPageArrow(isNext: true, fontSize: fontSize, buttonSize: buttonSize),
         ],
       ),
     );
   }
-
+  Widget _buildPageArrow({
+    required bool isNext,
+    required double fontSize,
+    required double buttonSize,
+  }) {
+    return InkWell(
+      onTap: () {
+        final targetPage = isNext ? _currentPage + 1 : _currentPage - 1;
+        if (_selectedMedicalField != null) {
+          _loadProductsByField(_selectedMedicalField!, page: targetPage);
+        } else {
+          loadProducts(page: targetPage);
+        }
+      },
+      borderRadius: BorderRadius.circular(6),
+      splashColor: Colors.grey.shade300,
+      child: Container(
+        width: buttonSize,
+        height: buttonSize,
+        alignment: Alignment.center,
+        child: Icon(
+          isNext ? Icons.chevron_right : Icons.chevron_left,
+          color: const Color(0xff185794),
+          size: fontSize + 4,
+        ),
+      ),
+    );
+  }
 }

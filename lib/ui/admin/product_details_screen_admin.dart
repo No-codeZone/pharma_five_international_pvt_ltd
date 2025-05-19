@@ -74,7 +74,7 @@ class _ProductDetailsScreenAdminState extends State<ProductDetailsScreenAdmin> {
       toastLength: Toast.LENGTH_LONG,
       gravity: ToastGravity.TOP,
       timeInSecForIosWeb: 2,
-      backgroundColor: isError ? Colors.red : Colors.green,
+      backgroundColor: isError ? Colors.red : Color(0xff185794),
       textColor: Colors.white,
       fontSize: 16.0,
     );
@@ -324,6 +324,51 @@ class _ProductDetailsScreenAdminState extends State<ProductDetailsScreenAdmin> {
                   ),
                 ],
               ),
+            const SizedBox(height: 8),
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: const Color(0xffffecb5),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: const [
+                  // Header stays at default bold size (inherited from Theme or ~14–16)
+                  Text(
+                    "Disclaimer",
+                    style: TextStyle(
+                      fontWeight: FontWeight.bold,
+                      color: Color(0xff664d03),
+                    ),
+                  ),
+                  SizedBox(height: 4),
+                  Text(
+                    "Product data taken from web sources",
+                    style: TextStyle(
+                      color: Color(0xff664d03),
+                      fontSize: 12,
+                    ),
+                  ),
+                  Text(
+                    "At most care is taken for accuracy",
+                    style: TextStyle(
+                      color: Color(0xff664d03),
+                      fontSize: 12,
+                    ),
+                  ),
+                  Text(
+                    "PFIPL is not responsible for any source errors",
+                    style: TextStyle(
+                      color: Color(0xff664d03),
+                      fontSize: 12,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 16),
           ],
         ),
       ),
@@ -341,10 +386,12 @@ class _ProductDetailsScreenAdminState extends State<ProductDetailsScreenAdmin> {
       margin: const EdgeInsets.symmetric(vertical: 6),
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
       elevation: 1,
-      child: ListTile(
+      child:
+      ListTile(
         contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
         tileColor: Colors.white.withOpacity(0.95),
-        title: Text(
+        title:
+        Text(
           key,
           style: const TextStyle(
             fontWeight: FontWeight.bold,
@@ -372,7 +419,8 @@ class _ProductDetailsScreenAdminState extends State<ProductDetailsScreenAdmin> {
               ),
             ),
           )
-              : Text(
+              :
+          Text(
             value,
             style: TextStyle(
               fontSize: 13,
@@ -404,10 +452,10 @@ class _ProductDetailsScreenAdminState extends State<ProductDetailsScreenAdmin> {
       "Toxicity": p.toxicity,
       "Food Interactions": p.foodInteractions,
       "Drug Categories": p.drugCategories,
-      "Reference Link": p.referenceLink,
     };
 
     final filteredFields = fields.entries.where((entry) {
+      final key = entry.key;
       final val = entry.value?.trim().toUpperCase();
       return val != null && val.isNotEmpty && val != "-NA";
     });
@@ -480,6 +528,10 @@ class _ProductDetailsScreenAdminState extends State<ProductDetailsScreenAdmin> {
                     const SizedBox(height: 12),
                     const Divider(),
                     const SizedBox(height: 8),
+
+                    // Reference Link Section - Moved above Summary and styled in a box
+                    if (p.referenceLink != null && p.referenceLink!.isNotEmpty)
+                      _buildInfoCard("Reference Link", p.referenceLink),
                     if (p.indication != null && p.indication!.isNotEmpty)
                       Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
@@ -517,6 +569,71 @@ class _ProductDetailsScreenAdminState extends State<ProductDetailsScreenAdmin> {
                           ),
                         ],
                       ),
+                    const SizedBox(height: 16),
+                    Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: const Color(0xffffecb5),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: const [
+                          Text(
+                            "Disclaimer",
+                            style: TextStyle(
+                              fontWeight: FontWeight.bold,
+                              color: Color(0xff664d03),
+                            ),
+                          ),
+                          SizedBox(height: 4),
+                          Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Row(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text("• ", style: TextStyle(color: Color(0xff664d03), fontSize: 12)),
+                                  Expanded(
+                                    child: Text(
+                                      "Product data taken from web sources",
+                                      style: TextStyle(color: Color(0xff664d03), fontSize: 12),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              SizedBox(height: 4),
+                              Row(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text("• ", style: TextStyle(color: Color(0xff664d03), fontSize: 12)),
+                                  Expanded(
+                                    child: Text(
+                                      "At most care is taken for accuracy",
+                                      style: TextStyle(color: Color(0xff664d03), fontSize: 12),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              SizedBox(height: 4),
+                              Row(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text("• ", style: TextStyle(color: Color(0xff664d03), fontSize: 12)),
+                                  Expanded(
+                                    child: Text(
+                                      "PFIPL is not responsible for any source errors",
+                                      style: TextStyle(color: Color(0xff664d03), fontSize: 12),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ],
+                          )
+                        ],
+                      ),
+                    ),
                     const SizedBox(height: 16),
                   ],
                 ),
@@ -568,168 +685,108 @@ class _ProductDetailsScreenAdminState extends State<ProductDetailsScreenAdmin> {
 
   Widget _buildPackSizes(GetProductsContent product) {
     final items = product.packSizes ?? [];
-    if (items.isEmpty) return _styledAccordionItem("Pack Sizes", "No data available.");
 
-    // Table-like layout for pack sizes
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        // Table header
-        Container(
-          padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
-          decoration: BoxDecoration(
-            color: const Color(0xff185794),
-            borderRadius: BorderRadius.circular(8),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.blue.withOpacity(0.2),
-                blurRadius: 3,
-                offset: const Offset(0, 2),
-              ),
-            ],
-          ),
-          child: const Row(
-            children: [
-              Expanded(
-                flex: 1,
-                child: Text(
-                  "Strength",
-                  style: TextStyle(
-                    fontWeight: FontWeight.bold,
-                    color: Colors.white,
-                  ),
-                ),
-              ),
-              Expanded(
-                flex: 1,
-                child: Text(
-                  "Pack Size",
-                  style: TextStyle(
-                    fontWeight: FontWeight.bold,
-                    color: Colors.white,
-                  ),
-                ),
-              ),
-              Expanded(
-                flex: 2,
-                child: Text(
-                  "Storage",
-                  style: TextStyle(
-                    fontWeight: FontWeight.bold,
-                    color: Colors.white,
-                  ),
-                ),
-              ),
-            ],
-          ),
+    if (items.isEmpty) {
+      return Padding(
+        padding: const EdgeInsets.symmetric(vertical: 8.0),
+        child: _styledAccordionItem("Pack Sizes", "No data available."),
+      );
+    }
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 8.0),
+      child: Container(
+        width: double.infinity,
+        decoration: BoxDecoration(
+          border: Border.all(color: Colors.grey.shade300),
+          borderRadius: BorderRadius.circular(8),
         ),
-
-        const SizedBox(height: 8),
-
-        // Use a ListView for potentially many pack sizes with efficient rendering
-        SizedBox(
-          height: items.length > 4 ? 200 : null, // Dynamic height based on items count
-          child: ListView.builder(
-            shrinkWrap: items.length <= 4,
-            physics: items.length <= 4 ? const NeverScrollableScrollPhysics() : const ClampingScrollPhysics(),
-            itemCount: items.length,
-            itemBuilder: (context, index) {
-              final pack = items[index];
-
-              // Determine row background color - Default or Highlighted
-              final isHighlighted = _highlightedPackSizeIndex == index;
-              final backgroundColor = isHighlighted
-                  ? const Color(0xFFE1F5FE) // Highlighted color
-                  : (index % 2 == 0 ? Colors.white : const Color(0xFFF5F9FF)); // Alternating colors
-
-              return GestureDetector(
-                onTap: () {
-                  // Toggle highlight on tap
-                  setState(() {
-                    _highlightedPackSizeIndex =
-                    _highlightedPackSizeIndex == index ? null : index;
-                  });
-                },
-                onLongPress: () {
-                  // Show a detail popup or tooltip for the selected row
-                  final strength = pack.strength ?? '-';
-                  final packSize = pack.packSize ?? '-';
-                  final storage = pack.storage ?? '-';
-
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(
-                      content: Text('Selected: $strength ($packSize) - $storage'),
-                      behavior: SnackBarBehavior.floating,
-                      duration: const Duration(seconds: 2),
-                    ),
-                  );
-                },
-                child: Container(
-                  decoration: BoxDecoration(
-                    color: backgroundColor,
-                    border: Border(
-                      bottom: BorderSide(
-                        color: Colors.grey.shade300,
-                        width: 1,
-                      ),
-                    ),
-                    // Add a subtle border when highlighted
-                    boxShadow: isHighlighted ? [
-                      BoxShadow(
-                        color: const Color(0xff185794).withOpacity(0.3),
-                        blurRadius: 0,
-                        spreadRadius: 1,
-                      )
-                    ] : null,
-                  ),
-                  padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
-                  child: Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      // Strength column
-                      Expanded(
-                        flex: 1,
-                        child: Text(
-                          pack.strength ?? '-',
-                          style: TextStyle(
-                            fontWeight: isHighlighted ? FontWeight.bold : FontWeight.w500,
-                            color: const Color(0xFF2C3E50),
-                          ),
-                        ),
-                      ),
-                      // Pack Size column
-                      Expanded(
-                        flex: 1,
-                        child: Text(
-                          pack.packSize ?? '-',
-                          style: TextStyle(
-                            color: Colors.grey[800],
-                            fontWeight: isHighlighted ? FontWeight.bold : FontWeight.normal,
-                          ),
-                        ),
-                      ),
-                      // Storage column
-                      Expanded(
-                        flex: 2,
-                        child: Text(
-                          pack.storage ?? '-',
-                          style: TextStyle(
-                            color: Colors.grey[800],
-                            fontWeight: isHighlighted ? FontWeight.bold : FontWeight.normal,
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Table Header
+            Container(
+              padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
+              decoration: BoxDecoration(
+                color: const Color(0xff185794),
+                borderRadius: const BorderRadius.only(
+                  topLeft: Radius.circular(8),
+                  topRight: Radius.circular(8),
                 ),
-              );
-            },
-          ),
+              ),
+              child: Row(
+                children: const [
+                  Expanded(
+                    flex: 3,
+                    child: Text("Strength",
+                        style: TextStyle(fontWeight: FontWeight.bold, color: Colors.white)),
+                  ),
+                  Expanded(
+                    flex: 3,
+                    child: Text("Pack Size",
+                        style: TextStyle(fontWeight: FontWeight.bold, color: Colors.white)),
+                  ),
+                  Expanded(
+                    flex: 4,
+                    child: Text("Storage",
+                        style: TextStyle(fontWeight: FontWeight.bold, color: Colors.white)),
+                  ),
+                ],
+              ),
+            ),
+
+            // Table Rows
+            ListView.builder(
+              shrinkWrap: true,
+              physics: const NeverScrollableScrollPhysics(),
+              itemCount: items.length,
+              itemBuilder: (context, index) {
+                final pack = items[index];
+                final isHighlighted = _highlightedPackSizeIndex == index;
+                final bgColor = isHighlighted
+                    ? const Color(0xFFE1F5FE)
+                    : (index % 2 == 0 ? Colors.white : const Color(0xFFF5F9FF));
+
+                return GestureDetector(
+                  onTap: () => setState(() =>
+                  _highlightedPackSizeIndex = isHighlighted ? null : index),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
+                    decoration: BoxDecoration(
+                      color: bgColor,
+                      border: Border(bottom: BorderSide(color: Colors.grey.shade300)),
+                    ),
+                    child: Row(
+                      children: [
+                        Expanded(
+                          flex: 3,
+                          child: Text(pack.strength ?? '-',
+                              style: TextStyle(
+                                  fontWeight: isHighlighted ? FontWeight.bold : FontWeight.normal)),
+                        ),
+                        Expanded(
+                          flex: 3,
+                          child: Text(pack.packSize ?? '-',
+                              style: TextStyle(
+                                  fontWeight: isHighlighted ? FontWeight.bold : FontWeight.normal)),
+                        ),
+                        Expanded(
+                          flex: 4,
+                          child: Text(pack.storage ?? '-',
+                              style: TextStyle(
+                                  fontWeight: isHighlighted ? FontWeight.bold : FontWeight.normal)),
+                        ),
+                      ],
+                    ),
+                  ),
+                );
+              },
+            ),
+          ],
         ),
-      ],
+      ),
     );
   }
-
   // Improved drug interactions widget with better styling and row highlighting
   Widget _buildDrugInteractions(GetProductsContent product) {
     final items = product.drugInteractions ?? [];
@@ -738,398 +795,111 @@ class _ProductDetailsScreenAdminState extends State<ProductDetailsScreenAdmin> {
       return _styledAccordionItem("Drug Interactions", "No data available.");
     }
 
-    // Use a more efficient approach with a table-like layout
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        // Table header
-        Container(
-          padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
-          decoration: BoxDecoration(
-            color: const Color(0xff185794),
-            borderRadius: BorderRadius.circular(8),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.blue.withOpacity(0.2),
-                blurRadius: 3,
-                offset: const Offset(0, 2),
-              ),
-            ],
-          ),
-          child: const Row(
-            children: [
-              Expanded(
-                flex: 2,
-                child: Text(
-                  "Drug Name",
-                  style: TextStyle(
-                    fontWeight: FontWeight.bold,
-                    color: Colors.white,
-                  ),
-                ),
-              ),
-              Expanded(
-                flex: 3,
-                child: Text(
-                  "Interaction",
-                  style: TextStyle(
-                    fontWeight: FontWeight.bold,
-                    color: Colors.white,
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ),
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        // Get the available width to make responsive design decisions
+        final availableWidth = constraints.maxWidth;
 
-        const SizedBox(height: 8),
-
-        // Table data
-        Container(
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(8),
-            border: Border.all(
-              color: Colors.grey.shade300,
-              width: 1,
-            ),
-          ),
-          child: ClipRRect(
-            borderRadius: BorderRadius.circular(8),
-            child: SizedBox(
-              height: 300, // Fixed height that works well for most screens
-              child: ListView.builder(
-                // Allow scrolling within this container
-                physics: const ClampingScrollPhysics(),
-                itemCount: _showAllDrugInteractions ? items.length : min(items.length, 5),
-                itemBuilder: (context, index) {
-                  final d = items[index];
-
-                  // Determine if this row is highlighted
-                  final isHighlighted = _highlightedDrugInteractionIndex == index;
-                  final backgroundColor = isHighlighted
-                      ? const Color(0xFFE1F5FE) // Highlighted blue color
-                      : (index % 2 == 0 ? Colors.white : const Color(0xFFF5F9FF));
-
-                  return GestureDetector(
-                    onTap: () {
-                      // Toggle highlight on tap
-                      setState(() {
-                        _highlightedDrugInteractionIndex =
-                        _highlightedDrugInteractionIndex == index ? null : index;
-                      });
-                    },
-                    onLongPress: () {
-                      // Show more details in a snackbar
-                      final drug = d.drug ?? '-';
-                      final interaction = d.interaction ?? '-';
-
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(
-                          content: Text('$drug: $interaction'),
-                          behavior: SnackBarBehavior.floating,
-                          duration: const Duration(seconds: 3),
-                        ),
-                      );
-                    },
-                    child: Container(
-                      decoration: BoxDecoration(
-                        color: backgroundColor,
-                        border: Border(
-                          bottom: BorderSide(
-                            color: Colors.grey.shade300,
-                            width: 1,
-                          ),
-                        ),
-                        boxShadow: isHighlighted ? [
-                          BoxShadow(
-                            color: const Color(0xff185794).withOpacity(0.3),
-                            blurRadius: 0,
-                            spreadRadius: 1,
-                          )
-                        ] : null,
-                      ),
-                      padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
-                      child: Row(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          // Drug column
-                          Expanded(
-                            flex: 2,
-                            child: Text(
-                              d.drug ?? '-',
-                              style: TextStyle(
-                                fontWeight: isHighlighted ? FontWeight.bold : FontWeight.w500,
-                                color: const Color(0xFF2C3E50),
-                              ),
-                            ),
-                          ),
-                          // Interaction column
-                          Expanded(
-                            flex: 3,
-                            child: Text(
-                              d.interaction ?? '-',
-                              style: TextStyle(
-                                color: Colors.grey[800],
-                                fontWeight: isHighlighted ? FontWeight.bold : FontWeight.normal,
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  );
-                },
-              ),
-            ),
-          ),
-        ),
-
-        // Show more/less button if there are more than 5 items
-        if (items.length > 5)
-          Padding(
-            padding: const EdgeInsets.only(top: 12.0),
-            child: TextButton.icon(
-              onPressed: () {
-                setState(() {
-                  _showAllDrugInteractions = !_showAllDrugInteractions;
-                });
-              },
-              icon: Icon(
-                _showAllDrugInteractions ? Icons.visibility_off : Icons.visibility,
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Header row
+            Container(
+              width: availableWidth,
+              padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
+              decoration: BoxDecoration(
                 color: const Color(0xff185794),
-                size: 18,
+                borderRadius: BorderRadius.circular(8),
               ),
-              label: Text(
-                _showAllDrugInteractions ? "Show Less" : "Show More (${items.length - 5} more)",
-                style: const TextStyle(
-                  fontWeight: FontWeight.bold,
-                  color: Color(0xff185794),
-                ),
+              child: const Row(
+                children: [
+                  Expanded(
+                    flex: 2,
+                    child: Text(
+                      "Drug Name",
+                      style: TextStyle(fontWeight: FontWeight.bold, color: Colors.white),
+                    ),
+                  ),
+                  Expanded(
+                    flex: 3,
+                    child: Text(
+                      "Interaction",
+                      style: TextStyle(fontWeight: FontWeight.bold, color: Colors.white),
+                    ),
+                  ),
+                ],
               ),
             ),
-          ),
-      ],
-    );
-  }
+            const SizedBox(height: 8),
 
-  Widget _buildBrandPrescriptions(GetProductsContent product) {
-    final items = product.brandPrescriptions ?? [];
-    if (items.isEmpty) return _styledAccordionItem("Brand Prescriptions", "No data available.");
+            // Data rows in a fixed height scrollable box
+            Container(
+              width: availableWidth,
+              height: 300,
+              decoration: BoxDecoration(
+                border: Border.all(color: Colors.grey.shade300, width: 1),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(8),
+                child: ListView.builder(
+                  itemCount: _showAllDrugInteractions ? items.length : (items.length > 5 ? 5 : items.length),
+                  itemBuilder: (context, index) {
+                    final d = items[index];
+                    final isHighlighted = _highlightedDrugInteractionIndex == index;
+                    final bgColor = isHighlighted
+                        ? const Color(0xFFE1F5FE)
+                        : (index % 2 == 0 ? Colors.white : const Color(0xFFF5F9FF));
 
-    // Use a more efficient approach with a table layout
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        // Table header row
-        SingleChildScrollView(
-          scrollDirection: Axis.horizontal,
-          child: Container(
-            padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
-            decoration: BoxDecoration(
-              color: const Color(0xff185794),
-              borderRadius: BorderRadius.circular(8),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.blue.withOpacity(0.2),
-                  blurRadius: 3,
-                  offset: const Offset(0, 2),
-                ),
-              ],
-            ),
-            child: Row(
-              children: const [
-                SizedBox(
-                  width: 100,
-                  child: Text(
-                    "Dosage",
-                    style: TextStyle(
-                      fontWeight: FontWeight.bold,
-                      color: Colors.white,
-                    ),
-                  ),
-                ),
-                SizedBox(
-                  width: 100,
-                  child: Text(
-                    "Strength",
-                    style: TextStyle(
-                      fontWeight: FontWeight.bold,
-                      color: Colors.white,
-                    ),
-                  ),
-                ),
-                SizedBox(
-                  width: 80,
-                  child: Text(
-                    "Route",
-                    style: TextStyle(
-                      fontWeight: FontWeight.bold,
-                      color: Colors.white,
-                    ),
-                  ),
-                ),
-                SizedBox(
-                  width: 120,
-                  child: Text(
-                    "Labeller",
-                    style: TextStyle(
-                      fontWeight: FontWeight.bold,
-                      color: Colors.white,
-                    ),
-                  ),
-                ),
-                SizedBox(
-                  width: 120,
-                  child: Text(
-                    "Marketing Start",
-                    style: TextStyle(
-                      fontWeight: FontWeight.bold,
-                      color: Colors.white,
-                    ),
-                  ),
-                ),
-                SizedBox(
-                  width: 120,
-                  child: Text(
-                    "Marketing End",
-                    style: TextStyle(
-                      fontWeight: FontWeight.bold,
-                      color: Colors.white,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
-
-        const SizedBox(height: 8),
-
-        // Table data with horizontal scrolling support
-        Container(
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(8),
-            border: Border.all(
-              color: Colors.grey.shade300,
-              width: 1,
-            ),
-          ),
-          child: ClipRRect(
-            borderRadius: BorderRadius.circular(8),
-            child: SizedBox(
-              height: 300, // Fixed height with scrolling
-              child: ListView.builder(
-                physics: const ClampingScrollPhysics(),
-                itemCount: items.length,
-                itemBuilder: (context, index) {
-                  final b = items[index];
-
-                  // Determine if this row is highlighted
-                  final isHighlighted = _highlightedBrandPrescriptionIndex == index;
-                  final backgroundColor = isHighlighted
-                      ? const Color(0xFFE1F5FE) // Highlighted blue color
-                      : (index % 2 == 0 ? Colors.white : const Color(0xFFF5F9FF)); // Alternating colors
-
-                  return GestureDetector(
-                    onTap: () {
-                      // Toggle highlight on tap
-                      setState(() {
-                        _highlightedBrandPrescriptionIndex =
-                        _highlightedBrandPrescriptionIndex == index ? null : index;
-                      });
-                    },
-                    onLongPress: () {
-                      // Show a detail popup for the selected row
-                      final dosage = b.dosage ?? '-';
-                      final strength = b.strength ?? '-';
-                      final labeller = b.labeller ?? '-';
-
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(
-                          content: Text('Selected: $dosage ($strength) - $labeller'),
-                          behavior: SnackBarBehavior.floating,
-                          duration: const Duration(seconds: 2),
-                        ),
-                      );
-                    },
-                    child: SingleChildScrollView(
-                      scrollDirection: Axis.horizontal,
-                      child: Container(
-                        decoration: BoxDecoration(
-                          color: backgroundColor,
-                          border: Border(
-                            bottom: BorderSide(
-                              color: Colors.grey.shade300,
-                              width: 1,
-                            ),
+                    return GestureDetector(
+                      onTap: () => setState(() {
+                        _highlightedDrugInteractionIndex =
+                        isHighlighted ? null : index;
+                      }),
+                      onLongPress: () {
+                        final msg = '${d.drug ?? '-'}: ${d.interaction ?? '-'}';
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                            content: Text(msg),
+                            behavior: SnackBarBehavior.floating,
+                            duration: const Duration(seconds: 3),
                           ),
-                          // Add a subtle border when highlighted
-                          boxShadow: isHighlighted ? [
+                        );
+                      },
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
+                        decoration: BoxDecoration(
+                          color: bgColor,
+                          border: Border(
+                            bottom: BorderSide(color: Colors.grey.shade300),
+                          ),
+                          boxShadow: isHighlighted
+                              ? [
                             BoxShadow(
                               color: const Color(0xff185794).withOpacity(0.3),
                               blurRadius: 0,
                               spreadRadius: 1,
                             )
-                          ] : null,
+                          ]
+                              : null,
                         ),
-                        padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
                         child: Row(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            SizedBox(
-                              width: 100,
+                            Expanded(
+                              flex: 2,
                               child: Text(
-                                b.dosage ?? '-',
+                                d.drug ?? '-',
                                 style: TextStyle(
-                                  fontWeight: isHighlighted ? FontWeight.bold : FontWeight.w500,
+                                  fontWeight: isHighlighted ? FontWeight.bold : FontWeight.normal,
                                   color: const Color(0xFF2C3E50),
                                 ),
                               ),
                             ),
-                            SizedBox(
-                              width: 100,
+                            Expanded(
+                              flex: 3,
                               child: Text(
-                                b.strength ?? '-',
-                                style: TextStyle(
-                                  color: Colors.grey[800],
-                                  fontWeight: isHighlighted ? FontWeight.bold : FontWeight.normal,
-                                ),
-                              ),
-                            ),
-                            SizedBox(
-                              width: 80,
-                              child: Text(
-                                b.route ?? '-',
-                                style: TextStyle(
-                                  color: Colors.grey[800],
-                                  fontWeight: isHighlighted ? FontWeight.bold : FontWeight.normal,
-                                ),
-                              ),
-                            ),
-                            SizedBox(
-                              width: 120,
-                              child: Text(
-                                b.labeller ?? '-',
-                                style: TextStyle(
-                                  color: Colors.grey[800],
-                                  fontWeight: isHighlighted ? FontWeight.bold : FontWeight.normal,
-                                ),
-                              ),
-                            ),
-                            SizedBox(
-                              width: 120,
-                              child: Text(
-                                b.marketingStart ?? '-',
-                                style: TextStyle(
-                                  color: Colors.grey[800],
-                                  fontWeight: isHighlighted ? FontWeight.bold : FontWeight.normal,
-                                ),
-                              ),
-                            ),
-                            SizedBox(
-                              width: 120,
-                              child: Text(
-                                b.marketingEnd ?? '-',
+                                d.interaction ?? '-',
                                 style: TextStyle(
                                   color: Colors.grey[800],
                                   fontWeight: isHighlighted ? FontWeight.bold : FontWeight.normal,
@@ -1139,14 +909,195 @@ class _ProductDetailsScreenAdminState extends State<ProductDetailsScreenAdmin> {
                           ],
                         ),
                       ),
-                    ),
-                  );
-                },
+                    );
+                  },
+                ),
               ),
             ),
+
+            if (items.length > 5)
+              Padding(
+                padding: const EdgeInsets.only(top: 12),
+                child: TextButton.icon(
+                  onPressed: () {
+                    setState(() => _showAllDrugInteractions = !_showAllDrugInteractions);
+                  },
+                  icon: Icon(
+                    _showAllDrugInteractions ? Icons.visibility_off : Icons.visibility,
+                    color: const Color(0xff185794),
+                    size: 18,
+                  ),
+                  label: Text(
+                    _showAllDrugInteractions
+                        ? "Show Less"
+                        : "Show More (${items.length - 5} more)",
+                    style: const TextStyle(
+                      fontWeight: FontWeight.bold,
+                      color: Color(0xff185794),
+                    ),
+                  ),
+                ),
+              ),
+          ],
+        );
+      },
+    );
+  }
+
+  Widget _buildBrandPrescriptions(GetProductsContent product) {
+    final items = product.brandPrescriptions ?? [];
+    if (items.isEmpty) return _styledAccordionItem("Brand Prescriptions", "No data available.");
+
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        // Total width of the table
+        const double tableWidth = 740;
+
+        final table = Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Table Header
+            Container(
+              padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
+              decoration: BoxDecoration(
+                color: const Color(0xff185794),
+                borderRadius: BorderRadius.circular(8),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.blue.withOpacity(0.2),
+                    blurRadius: 3,
+                    offset: const Offset(0, 2),
+                  ),
+                ],
+              ),
+              child: Row(
+                children: const [
+                  SizedBox(
+                    width: 100,
+                    child: Text("Dosage", style: TextStyle(fontWeight: FontWeight.bold, color: Colors.white)),
+                  ),
+                  SizedBox(
+                    width: 100,
+                    child: Text("Strength", style: TextStyle(fontWeight: FontWeight.bold, color: Colors.white)),
+                  ),
+                  SizedBox(
+                    width: 80,
+                    child: Text("Route", style: TextStyle(fontWeight: FontWeight.bold, color: Colors.white)),
+                  ),
+                  SizedBox(
+                    width: 120,
+                    child: Text("Labeller", style: TextStyle(fontWeight: FontWeight.bold, color: Colors.white)),
+                  ),
+                  SizedBox(
+                    width: 120,
+                    child: Text("Marketing Start", style: TextStyle(fontWeight: FontWeight.bold, color: Colors.white)),
+                  ),
+                  SizedBox(
+                    width: 120,
+                    child: Text("Marketing End", style: TextStyle(fontWeight: FontWeight.bold, color: Colors.white)),
+                  ),
+                ],
+              ),
+            ),
+
+            const SizedBox(height: 8),
+
+            // Table Body
+            Container(
+              height: 300,
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: Colors.grey.shade300, width: 1),
+              ),
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(8),
+                child: ListView.builder(
+                  itemCount: items.length,
+                  physics: const ClampingScrollPhysics(),
+                  itemBuilder: (context, index) {
+                    final b = items[index];
+                    final isHighlighted = _highlightedBrandPrescriptionIndex == index;
+                    final backgroundColor = isHighlighted
+                        ? const Color(0xFFE1F5FE)
+                        : (index % 2 == 0 ? Colors.white : const Color(0xFFF5F9FF));
+
+                    return GestureDetector(
+                      onTap: () {
+                        setState(() {
+                          _highlightedBrandPrescriptionIndex =
+                          _highlightedBrandPrescriptionIndex == index ? null : index;
+                        });
+                      },
+                      onLongPress: () {
+                        final info = '${b.dosage ?? '-'} (${b.strength ?? '-'}) - ${b.labeller ?? '-'}';
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                            content: Text('Selected: $info'),
+                            behavior: SnackBarBehavior.floating,
+                            duration: const Duration(seconds: 2),
+                          ),
+                        );
+                      },
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
+                        decoration: BoxDecoration(
+                          color: backgroundColor,
+                          border: Border(bottom: BorderSide(color: Colors.grey.shade300)),
+                          boxShadow: isHighlighted
+                              ? [
+                            BoxShadow(
+                              color: const Color(0xff185794).withOpacity(0.3),
+                              blurRadius: 0,
+                              spreadRadius: 1,
+                            )
+                          ]
+                              : null,
+                        ),
+                        child: Row(
+                          children: [
+                            SizedBox(
+                              width: 100,
+                              child: Text(b.dosage ?? '-', style: TextStyle(fontWeight: isHighlighted ? FontWeight.bold : FontWeight.normal)),
+                            ),
+                            SizedBox(
+                              width: 100,
+                              child: Text(b.strength ?? '-', style: TextStyle(fontWeight: isHighlighted ? FontWeight.bold : FontWeight.normal)),
+                            ),
+                            SizedBox(
+                              width: 80,
+                              child: Text(b.route ?? '-', style: TextStyle(fontWeight: isHighlighted ? FontWeight.bold : FontWeight.normal)),
+                            ),
+                            SizedBox(
+                              width: 120,
+                              child: Text(b.labeller ?? '-', style: TextStyle(fontWeight: isHighlighted ? FontWeight.bold : FontWeight.normal)),
+                            ),
+                            SizedBox(
+                              width: 120,
+                              child: Text(b.marketingStart ?? '-', style: TextStyle(fontWeight: isHighlighted ? FontWeight.bold : FontWeight.normal)),
+                            ),
+                            SizedBox(
+                              width: 120,
+                              child: Text(b.marketingEnd ?? '-', style: TextStyle(fontWeight: isHighlighted ? FontWeight.bold : FontWeight.normal)),
+                            ),
+                          ],
+                        ),
+                      ),
+                    );
+                  },
+                ),
+              ),
+            ),
+          ],
+        );
+
+        return SingleChildScrollView(
+          scrollDirection: Axis.horizontal,
+          child: SizedBox(
+            width: tableWidth,
+            child: table,
           ),
-        ),
-      ],
+        );
+      },
     );
   }
 }

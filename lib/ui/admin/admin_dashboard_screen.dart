@@ -1,5 +1,4 @@
 import 'dart:convert';
-
 import 'package:flutter/material.dart';
 import 'package:flutter_snake_navigationbar/flutter_snake_navigationbar.dart';
 import 'package:fluttertoast/fluttertoast.dart';
@@ -7,8 +6,8 @@ import 'package:http/http.dart' as http;
 import 'package:pharma_five/ui/admin/product_list_tab.dart';
 import 'package:pharma_five/ui/admin/report_tab.dart';
 import 'package:pharma_five/ui/admin/user_list_tab.dart';
-
 import '../../service/api_service.dart';
+import 'enquiry_screen.dart';
 
 class AdminDashboardScreen extends StatefulWidget {
   const AdminDashboardScreen({super.key});
@@ -22,6 +21,8 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
   int _currentPage = 0;
   String selectedStatus = 'Pending';
   final ApiService _apiService = ApiService();
+  int _userPage = 0;
+  int _enquiryPage = 0;
 
 
   void _onStatusUpdate(String email, String newStatus) async {
@@ -42,7 +43,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
       if (response.statusCode == 200 && responseData['success'] == true) {
         Fluttertoast.showToast(
           msg: "Status updated for $email",
-          backgroundColor: Colors.green,
+          backgroundColor: Color(0xff185794),
           textColor: Colors.white,
           gravity: ToastGravity.TOP,
         );
@@ -97,6 +98,13 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                 });
               },
             ),
+            EnquiryTab(
+              currentPage: _enquiryPage,
+              onPageChange: (newPage) {
+                setState(() => _enquiryPage = newPage);
+              },
+              pageSize: 10, // optional if you want a different page size
+            ),
             const ProductListTab(),
             const ReportTab(),
           ],
@@ -149,6 +157,24 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                   width: 20,
                   child: Image.asset(
                       _selectedTab == 1
+                          ? "assets/images/enquiry_1.png"
+                          : "assets/images/enquiry_2.png",
+                      // height: 20,
+                      // width: 20,
+                      alignment: Alignment.center,
+                      fit: BoxFit.contain
+                  ),
+                ),
+              ),
+            ),
+            BottomNavigationBarItem(
+              icon: Padding(
+                padding: const EdgeInsets.only(left: 3.0),
+                child: SizedBox(
+                  height: 20,
+                  width: 20,
+                  child: Image.asset(
+                      _selectedTab == 2
                           ? "assets/images/product_list.png"
                           : "assets/images/product_list2.png",
                       // height: 20,
@@ -166,7 +192,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                   height: 20,
                   width: 20,
                   child: Image.asset(
-                    _selectedTab == 2
+                    _selectedTab == 3
                         ? "assets/images/reports.png"
                         : "assets/images/report2.png",
                     fit: BoxFit.contain,

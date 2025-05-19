@@ -73,7 +73,14 @@ class _WalkthroughScreenState extends State<WalkthroughScreen> {
                       crossAxisAlignment: CrossAxisAlignment.end,
                       children: [
                         const SizedBox(height: 4),
-                        Text(
+                        // Text(
+                        //   'Ask Pharma Five',
+                        //   style: TextStyle(
+                        //       fontSize: 16,
+                        //       color: Colors.grey.shade600,
+                        //       fontWeight: FontWeight.bold),
+                        // ),
+                        /*Text(
                           'Join us today for easy',
                           style: TextStyle(
                               fontSize: 16,
@@ -86,7 +93,7 @@ class _WalkthroughScreenState extends State<WalkthroughScreen> {
                               fontSize: 16,
                               color: Colors.grey.shade600,
                               fontWeight: FontWeight.bold),
-                        ),
+                        ),*/
                       ],
                     ),
                   ),

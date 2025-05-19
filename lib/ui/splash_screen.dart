@@ -19,6 +19,7 @@ class SplashScreen extends StatefulWidget {
 class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderStateMixin {
   late AnimationController _controller;
   late Animation<double> _animation;
+  bool _showRetry = false;
 
   @override
   void initState() {
@@ -28,7 +29,11 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
       duration: const Duration(seconds: 2),
       vsync: this,
     );
-    _animation = CurvedAnimation(parent: _controller, curve: Curves.easeIn);
+
+    // Use Tween for a subtle scale effect (from 90% to 100%)
+    _animation = Tween<double>(begin: 0.9, end: 1.0)
+        .animate(CurvedAnimation(parent: _controller, curve: Curves.easeInOut));
+
     _controller.forward();
 
     _checkAndClearSession().then((_) {
@@ -53,12 +58,16 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
     try {
       await Future.delayed(const Duration(seconds: 3));
 
-      final isConnected = await InternetConnection().hasInternetAccess;
-      if (!isConnected) {
-        _showToast("No internet connection. Please check and retry.", isError: true);
-        return; // Exit early
+      bool isConnected = await InternetConnection().hasInternetAccess;
+
+      // Retry logic until internet is available
+      while (!isConnected) {
+        _showToast("No internet connection. Retrying...", isError: true);
+        await Future.delayed(const Duration(seconds: 5)); // Retry every 5 seconds
+        isConnected = await InternetConnection().hasInternetAccess;
       }
 
+      // Internet available, proceed
       await SharedPreferenceHelper.init();
 
       final isLoggedIn = await SharedPreferenceHelper.isLoggedIn();

@@ -5,19 +5,24 @@ import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import '../helper/shared_preferences.dart';
 import '../model/add_product_request_model.dart';
+import '../model/all_enquiry_response_model.dart';
 import '../model/get_field_product_listing_model.dart';
 import '../model/get_product_listing_response_model.dart';
 import '../model/get_product_more_response_model.dart';
 import '../model/get_product_search_model.dart';
 import '../model/login_session_model.dart';
+import '../model/producr_search_logs_model.dart';
 import '../model/product_search_listing_response_model.dart';
 import '../model/product_search_logs_model.dart';
 import '../model/product_update_request_model.dart';
 import '../model/product_update_response_model.dart';
+import '../model/register_request_model.dart';
+import '../model/register_response_model.dart';
 import '../model/request_enquiry_model.dart';
 import '../model/response_enquiry_model.dart';
 import '../model/update_product_listing_request_model.dart';
 import '../model/update_product_listing_response_model.dart';
+import '../model/view_enquiry_response_model.dart';
 
 class ApiService {
   // Base URL for API endpoints
@@ -41,9 +46,12 @@ class ApiService {
   final String deleteProductAPI="/product/delete/";   //baseUrlProduct
   final String bulkProductAPI="/product/upload";   //baseUrlProduct
   final String enquiryProductAPI="/enquiry/add";   //baseUrlProduct
+  final String enquiryAllProductAPI="/enquiry/all";   //baseUrlProduct
+  final String viewEnquiryAPI="/enquiry/";   //baseUrlProduct
   final String sendOTPAPI="/send-otp";
   final String resetPasswordAPI="/reset-password";
   final String searchLogsAPI="/product/search-logs";  //baseUrlProduct
+  final String searchLogsNewAPI="/product/search-logs";  //baseUrlProduct
   final String loginSessionAPI="/login-sessions";
 
   /// Authenticate a regular user through API
@@ -109,43 +117,31 @@ class ApiService {
   }
 
   /// Register a new user
-  Future<Map<String, dynamic>> registerUser({
-    required String name,
-    required String mobileNumber,
-    required String email,
-    required String organisationName,
-    required String password,
-  }) async {
-    final url = Uri.parse('$baseUrl${registerAPI}');
+  Future<RegisterResponseModel> registerUser(RegisterRequestModel requestModel) async {
+    final url = Uri.parse('$baseUrl$registerAPI');
 
     try {
       final response = await http.post(
         url,
         headers: {'Content-Type': 'application/json'},
-        body: jsonEncode({
-          "name": name,
-          "mobileNumber": mobileNumber,
-          "email": email,
-          "organisationName": organisationName,
-          "password": password,
-        }),
+        body: jsonEncode(requestModel.toJson()),
       );
 
       debugPrint("register/Response: ${response.body}");
 
       final Map<String, dynamic> responseData = jsonDecode(response.body);
+      return RegisterResponseModel.fromJson(responseData);
 
-      if (response.statusCode == 200) {
-        return {"success": true, "message": responseData['message'] ?? 'Registration successful'};
-      } else {
-        return {"success": false, "message": responseData['message'] ?? 'Registration failed'};
-      }
     } on TimeoutException catch (e) {
       debugPrint('TimeoutException in registration API: $e');
       throw TimeoutException('Request timed out');
     } catch (e) {
       debugPrint('Unexpected error in registration API: $e');
-      return {"success": false, "message": "Unexpected error occurred"};
+      return RegisterResponseModel(
+        success: false,
+        message: 'Unexpected error occurred',
+        data: null,
+      );
     }
   }
 
@@ -197,7 +193,6 @@ class ApiService {
       return {'content': [], 'totalPages': 0, 'last': true};
     }
   }
-
   ///Logout regular user
   Future<void> logoutUser({required String userEmail}) async {
     final url = Uri.parse('$baseUrl/logout').replace(queryParameters: {
@@ -708,19 +703,18 @@ class ApiService {
   }
 
   ///Login session report API
-  Future<LoginSessionModel> fetchLoginSessions() async {
-    final url = Uri.parse("$baseUrl$loginSessionAPI");
+  Future<LoginSessionModel> fetchAllLoginSessions() async {
+    final url = Uri.parse("${baseUrl}/login-sessions?index=0&limit=99999"); // fetch all
     final response = await http.get(url);
 
     print("RAW SESSION RESPONSE: ${response.body}");
 
     if (response.statusCode == 200) {
       final json = jsonDecode(response.body);
-
       if (json['sessions'] != null) {
         return LoginSessionModel.fromJson(json);
       } else if (json['data'] != null) {
-        return LoginSessionModel.fromJson(json['data']); // if sessions are nested in "data"
+        return LoginSessionModel.fromJson(json['data']);
       } else {
         throw Exception("No session data found");
       }
@@ -735,9 +729,23 @@ class ApiService {
 
     final response = await http.get(url);
     if (response.statusCode == 200) {
-      print("productSearchLogs/ADMIN\t${response}");
+      print("productSearchLogs/ADMIN\t${jsonDecode(response.body)}");
       final List<dynamic> jsonList = jsonDecode(response.body);
       return jsonList.map((e) => ProductSearchLogs.fromJson(e)).toList();
+    } else {
+      throw Exception("Failed to load search logs");
+    }
+  }
+
+  ///Product search logs new API
+  /// Fetch product search logs, default is today (1 day)
+  Future<List<ProductSearchLogsModel>> fetchSearchLogsByDay({int days = 1}) async {
+    final url = Uri.parse("$baseUrlProduct/product/search-logs?days=$days");
+    final response = await http.get(url);
+
+    if (response.statusCode == 200) {
+      final List<dynamic> jsonList = jsonDecode(response.body);
+      return jsonList.map((e) => ProductSearchLogsModel.fromJson(e)).toList();
     } else {
       throw Exception("Failed to load search logs");
     }
@@ -786,7 +794,6 @@ class ApiService {
     }
   }
 
-
   ///Fetch view more product content API
   Future<GetProductMoreResponseModel?> fetchProductDetailsBySerialNo(int serialNo) async {
     try {
@@ -795,7 +802,8 @@ class ApiService {
       );
 
       if (response.statusCode == 200) {
-        return GetProductMoreResponseModel.fromJson(json.decode(response.body));
+        final decoded = utf8.decode(response.bodyBytes);
+        return GetProductMoreResponseModel.fromJson(json.decode(decoded));
       } else {
         print('Failed to fetch product details. Status: ${response.statusCode}');
         return null;
@@ -872,6 +880,40 @@ class ApiService {
       debugPrint('Exception in fetchProductsByField: $e');
       return null;
     }
+  }
+
+  ///Get all user enquiry API
+  Future<AllEnquiryResponseModel> fetchAllEnquiries({
+    int index = 0,
+    int limit = 10,
+  }) async {
+    final uri = Uri.parse(
+      "$baseUrlProduct$enquiryAllProductAPI?index=$index&limit=$limit",
+    );
+
+    final response = await http.get(uri);
+
+    if (response.statusCode == 200) {
+      final Map<String, dynamic> jsonBody = json.decode(response.body);
+      return AllEnquiryResponseModel.fromJson(jsonBody);
+    } else {
+      // You can customize error handling here
+      throw Exception(
+        "Failed to load enquiries (status ${response.statusCode})",
+      );
+    }
+  }
+
+  ///View enquiry details API
+  Future<ViewEnquiryResponseModel> fetchEnquiryById(int id) async {
+    final uri = Uri.parse("$baseUrlProduct$viewEnquiryAPI$id");
+    final res = await http.get(uri);
+    if (res.statusCode == 200) {
+      return ViewEnquiryResponseModel.fromJson(
+        json.decode(res.body) as Map<String, dynamic>,
+      );
+    }
+    throw Exception("Failed to load enquiry #$id (${res.statusCode})");
   }
 
 

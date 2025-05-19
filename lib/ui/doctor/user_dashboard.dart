@@ -1,7 +1,11 @@
+import 'dart:async';
 import 'dart:io';
 import 'dart:math';
-
+import 'dart:typed_data';
+import 'package:share_plus/share_plus.dart';
+import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:device_info_plus/device_info_plus.dart';
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:fluttertoast/fluttertoast.dart';
 import 'package:http/http.dart' as http;
@@ -10,6 +14,7 @@ import 'package:open_file/open_file.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:pharma_five/ui/login_screen.dart';
+import 'package:share_plus/share_plus.dart';
 
 import '../../helper/shared_preferences.dart';
 import '../../model/get_product_search_model.dart';
@@ -49,6 +54,10 @@ class _UserDashboardScreenState extends State<UserDashboardScreen>
   bool _isUploadingExcel = false;
   int? _userSno;
   String? _selectedMedicalField;
+  final Connectivity _connectivity = Connectivity();
+  late StreamSubscription<List<ConnectivityResult>> _connectivitySubscription;
+  bool _lastConnectionStatus = true;
+
 
 
   @override
@@ -56,29 +65,39 @@ class _UserDashboardScreenState extends State<UserDashboardScreen>
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     _validateUserAndLoadData();
-    _updateInternetStatus();
+    _startConnectivityListener();
   }
 
-  void _updateInternetStatus() async {
-    final wasConnected = _isConnected;
-    _isConnected = await _checkInternetConnectivity();
+  void _startConnectivityListener() {
+    _connectivitySubscription =
+        _connectivity.onConnectivityChanged.listen((results) async {
+          final connected = results.contains(ConnectivityResult.mobile) ||
+              results.contains(ConnectivityResult.wifi) ||
+              results.contains(ConnectivityResult.ethernet);
 
-    if (_isConnected != wasConnected) {
-      final message =
-          _isConnected ? "Internet connected" : "Internet disconnected";
-      final color = _isConnected ? Colors.green : Colors.red;
+          if (_lastConnectionStatus != connected) {
+            setState(() {
+              _isConnected = connected;
+              _lastConnectionStatus = connected;
+            });
 
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(message),
-          backgroundColor: color,
-          duration: const Duration(seconds: 2),
-        ),
-      );
-    }
+            Fluttertoast.showToast(
+              msg: connected ? "Internet connected" : "Internet disconnected",
+              backgroundColor: connected ? Color(0xff185794) : Colors.red,
+            );
 
-    setState(() {}); // Trigger UI update
+            if (connected) {
+              // Auto reload product list
+              if (_selectedMedicalField != null) {
+                await _loadProductsByField(_selectedMedicalField!);
+              } else {
+                await _loadProductData(page: _currentPage);
+              }
+            }
+          }
+        });
   }
+
 
   Future<bool> _checkInternetConnectivity() async {
     try {
@@ -195,7 +214,7 @@ class _UserDashboardScreenState extends State<UserDashboardScreen>
   void _showToast(String message, {bool isError = false}) {
     Fluttertoast.showToast(
       msg: message,
-      backgroundColor: isError ? Colors.red.shade700 : Colors.green.shade700,
+      backgroundColor: isError ? Colors.red.shade700 : Color(0xff185794),
       textColor: Colors.white,
       fontSize: 16.0,
       toastLength: Toast.LENGTH_LONG,
@@ -299,28 +318,7 @@ class _UserDashboardScreenState extends State<UserDashboardScreen>
     }
   }
 
-  /*void _paginateFieldProducts(int page) {
-    final start = page * _itemsPerPage;
-    final end = min(start + _itemsPerPage, _allProducts.length);
-
-    if (start >= _allProducts.length) {
-      setState(() {
-        _filteredProducts = [];
-        _currentPage = page;
-        _hasMore = false;
-      });
-      return;
-    }
-
-    setState(() {
-      _currentPage = page;
-      _filteredProducts = _allProducts.sublist(start, end);
-      _hasMore = end < _allProducts.length;
-      _totalProductCount = _allProducts.length;
-    });
-  }*/
-
-  Future<void> _downloadExcelFile() async {
+  /*Future<void> _downloadExcelFile() async {
     setState(() => _isLoading = true);
 
     try {
@@ -400,328 +398,160 @@ class _UserDashboardScreenState extends State<UserDashboardScreen>
     } finally {
       setState(() => _isLoading = false);
     }
+  }*/
+
+  Future<void> _uploadExcelFile() async {
+    setState(() => _isUploadingExcel = true);
+
+    try {
+      // First check permissions
+      final hasPermission = await _checkAndRequestStoragePermission();
+      if (!hasPermission) {
+        setState(() => _isUploadingExcel = false);
+        return;
+      }
+
+      // Pick file
+      FilePickerResult? result = await FilePicker.platform.pickFiles(
+        type: FileType.custom,
+        allowedExtensions: ['xlsx', 'xls'],
+      );
+
+      if (result == null || result.files.isEmpty) {
+        setState(() => _isUploadingExcel = false);
+        return; // User canceled the picker
+      }
+
+      final file = result.files.first;
+
+      // Handle the file path differently for platforms
+      String? filePath;
+      Uint8List? fileBytes;
+
+      if (Platform.isIOS) {
+        // For iOS we need to use the bytes
+        fileBytes = file.bytes;
+        if (fileBytes == null) {
+          _showToast("Could not read file data", isError: true);
+          setState(() => _isUploadingExcel = false);
+          return;
+        }
+      } else {
+        // For Android we can use the path
+        filePath = file.path;
+        if (filePath == null) {
+          _showToast("Could not get file path", isError: true);
+          setState(() => _isUploadingExcel = false);
+          return;
+        }
+      }
+
+      // Show uploading toast
+      _showToast("Uploading Excel file...");
+
+      // Create multipart request
+      var request = http.MultipartRequest(
+        'POST',
+        Uri.parse('http://13.49.224.44:8080/api/product/upload'),
+      );
+
+      // Add file to request
+      if (Platform.isIOS && fileBytes != null) {
+        request.files.add(http.MultipartFile.fromBytes(
+          'file',
+          fileBytes,
+          filename: file.name,
+        ));
+      } else if (filePath != null) {
+        request.files.add(await http.MultipartFile.fromPath(
+          'file',
+          filePath,
+          filename: file.name,
+        ));
+      } else {
+        throw Exception("Could not prepare file for upload");
+      }
+
+      // Send request
+      var response = await request.send();
+
+      if (response.statusCode == 200) {
+        _showToast("Excel file uploaded successfully");
+        // Refresh product list
+        _loadProductData(page: 0);
+      } else {
+        final responseBody = await response.stream.bytesToString();
+        _showToast("Upload failed: ${response.statusCode} - $responseBody", isError: true);
+      }
+    } catch (e) {
+      debugPrint("Excel upload error: $e");
+      _showToast("Upload error: ${e.toString()}", isError: true);
+    } finally {
+      setState(() => _isUploadingExcel = false);
+    }
   }
 
   Future<bool> _checkAndRequestStoragePermission() async {
+    // Platform-specific permission handling
     if (Platform.isAndroid) {
-      final deviceInfo = DeviceInfoPlugin();
-      final androidInfo = await deviceInfo.androidInfo;
-      final sdkInt = androidInfo.version.sdkInt;
-
-      // Check permission status first
-      PermissionStatus storageStatus;
-
-      if (sdkInt >= 33) {
-        // Android 13+ needs media-specific permissions
-        storageStatus = await Permission.photos.status;
-        PermissionStatus downloadStatus = await Permission.mediaLibrary.status;
-
-        // If already granted, return true immediately
-        if (storageStatus.isGranted && downloadStatus.isGranted) {
-          return true;
-        }
-
-        // If denied previously but not permanently, show rationale before requesting again
-        if (storageStatus.isDenied || downloadStatus.isDenied) {
-          bool shouldContinue = await _showPermissionRationaleDialog(
-              "Storage Permission Required",
-              "We need permission to save the Excel file to your device. Please grant access to continue."
-          );
-
-          if (!shouldContinue) return false;
-        }
-
-        // Now request the permissions
-        storageStatus = await Permission.photos.request();
-        downloadStatus = await Permission.mediaLibrary.request();
-
-        if (storageStatus.isGranted && downloadStatus.isGranted) {
-          return true;
-        } else if (storageStatus.isPermanentlyDenied || downloadStatus.isPermanentlyDenied) {
-          _showPermissionPermanentlyDeniedDialog();
-          return false;
-        } else {
-          _showToast("Media permissions needed to download files", isError: true);
-          return false;
-        }
-      } else if (sdkInt >= 30) {
-        // Android 11-12
-        storageStatus = await Permission.storage.status;
-
-        if (storageStatus.isGranted) {
-          // Check the more powerful permission
-          final manageStatus = await Permission.manageExternalStorage.status;
-          if (manageStatus.isGranted) return true;
-
-          // If manage status is not granted but needed, show rationale and request
-          bool shouldContinue = await _showPermissionRationaleDialog(
-              "Storage Access Required",
-              "Additional storage permissions are needed for Android 11+. Please grant full storage access."
-          );
-
-          if (!shouldContinue) return false;
-
-          final requestedStatus = await Permission.manageExternalStorage.request();
-          return requestedStatus.isGranted;
-        }
-
-        // Basic storage not granted, show rationale
-        if (storageStatus.isDenied) {
-          bool shouldContinue = await _showPermissionRationaleDialog(
-              "Storage Permission Required",
-              "We need permission to save the Excel file to your device. Please grant access to continue."
-          );
-
-          if (!shouldContinue) return false;
-        }
-
-        // Request basic storage permission
-        storageStatus = await Permission.storage.request();
-
-        if (storageStatus.isGranted) {
-          // Try the more powerful permission if basic is granted
-          final manageStatus = await Permission.manageExternalStorage.request();
-          return manageStatus.isGranted;
-        } else if (storageStatus.isPermanentlyDenied) {
-          _showPermissionPermanentlyDeniedDialog();
-          return false;
-        } else {
-          _showToast("Storage permissions needed for Android 11+", isError: true);
-          return false;
-        }
-      } else {
-        // Android 10 and below
-        storageStatus = await Permission.storage.status;
-
-        if (storageStatus.isGranted) return true;
-
-        if (storageStatus.isDenied) {
-          bool shouldContinue = await _showPermissionRationaleDialog(
-              "Storage Permission Required",
-              "We need permission to save the Excel file to your device. Please grant access to continue."
-          );
-
-          if (!shouldContinue) return false;
-        }
-
-        storageStatus = await Permission.storage.request();
-
-        if (storageStatus.isGranted) {
-          return true;
-        } else if (storageStatus.isPermanentlyDenied) {
-          _showPermissionPermanentlyDeniedDialog();
-          return false;
-        } else {
-          _showToast("Storage permission needed to download files", isError: true);
-          return false;
-        }
-      }
-    }
-
-    // For iOS, request photos permission
-    if (Platform.isIOS) {
-      final status = await Permission.photos.status;
-
-      if (status.isGranted) return true;
-
-      if (status.isDenied) {
-        bool shouldContinue = await _showPermissionRationaleDialog(
-            "Photos Access Required",
-            "We need access to your Photos to save the Excel file. Please grant access to continue."
-        );
-
-        if (!shouldContinue) return false;
-      }
-
-      final requestStatus = await Permission.photos.request();
-
-      if (requestStatus.isGranted) {
-        return true;
-      } else if (requestStatus.isPermanentlyDenied) {
-        _showPermissionPermanentlyDeniedDialog();
-        return false;
-      } else {
-        _showToast("Photos access needed to save files", isError: true);
-        return false;
-      }
+      return await _handleAndroidPermissions();
+    } else if (Platform.isIOS) {
+      return await _handleIOSPermissions();
     }
 
     // Default allow for other platforms
     return true;
   }
 
-  Future<bool> _showPermissionRationaleDialog(String title, String message) async {
-    return (await showDialog<bool>(
-      context: context,
-      builder: (BuildContext context) {
-        return Builder(
-          builder: (BuildContext localContext) {
-            return Dialog(
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(16),
-              ),
-              child: Padding(
-                padding: const EdgeInsets.all(20),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    const Icon(Icons.lock, size: 48, color: Colors.orange),
-                    const SizedBox(height: 16),
-                    Text(
-                      title,
-                      style: const TextStyle(
-                        fontSize: 18,
-                        fontWeight: FontWeight.bold,
-                      ),
-                      textAlign: TextAlign.center,
-                    ),
-                    const SizedBox(height: 12),
-                    Text(
-                      message,
-                      textAlign: TextAlign.center,
-                      style: const TextStyle(fontSize: 15),
-                    ),
-                    const SizedBox(height: 24),
-                    Row(
-                      children: [
-                        Expanded(
-                          child: ElevatedButton(
-                            onPressed: () => Navigator.of(localContext).pop(false),
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: Colors.grey.shade300,
-                              foregroundColor: Colors.black,
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(10),
-                              ),
-                            ),
-                            child: const Text("Not Now"),
-                          ),
-                        ),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: ElevatedButton(
-                            onPressed: () => Navigator.of(localContext).pop(true),
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: const Color(0xff185794),
-                              foregroundColor: Colors.white,
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(10),
-                              ),
-                            ),
-                            child: const Text("Continue"),
-                          ),
-                        ),
-                      ],
-                    )
-                  ],
-                ),
-              ),
-            );
-          },
-        );
-      },
-    )) ?? false;
-  }
+  Future<bool> _handleIOSPermissions() async {
+    // For iOS, we need to request multiple permissions based on what we're doing
+    // First check photo library permission for saving files
+    final photoStatus = await Permission.photos.status;
 
-  /*void _showPermissionPermanentlyDeniedDialog() {
-    showDialog(
-      context: context,
-      builder: (BuildContext context) => AlertDialog(
-        title: const Text('Permission Required'),
-        content: const Text(
-          'Storage permission is required to download files but has been permanently denied. Please enable it in app settings.',
-        ),
-        actions: <Widget>[
-          TextButton(
-            child: const Text('Cancel'),
-            onPressed: () => Navigator.of(context).pop(),
-          ),
-          TextButton(
-            child: const Text('Open Settings'),
-            onPressed: () {
-              Navigator.of(context).pop();
-              openAppSettings();
-            },
-          ),
-        ],
-      ),
-    );
-  }*/
+    // If already granted, we're good to go
+    if (photoStatus.isGranted) return true;
 
-  Future<bool> _requestStoragePermission() async {
-    if (Platform.isAndroid) {
-      final deviceInfo = DeviceInfoPlugin();
-      final androidInfo = await deviceInfo.androidInfo;
-      final sdkInt = androidInfo.version.sdkInt;
-
-      if (sdkInt >= 33) {
-        // Android 13+ needs media-specific permissions instead of general storage
-        var status = await Permission.photos.request();
-        // For downloading in public directories like Downloads
-        var downloadStatus = await Permission.mediaLibrary.request();
-
-        if (status.isGranted && downloadStatus.isGranted) return true;
-
-        if (status.isPermanentlyDenied || downloadStatus.isPermanentlyDenied) {
-          _showPermissionPermanentlyDeniedDialog();
-          return false;
-        }
-
-        _showToast("Media permissions needed to download files", isError: true);
-        return false;
-      } else if (sdkInt >= 30) {
-        // Android 11-12 needs storage access + manage external storage
-        var status = await Permission.storage.request();
-
-        if (status.isGranted) {
-          // Try the more powerful permission
-          var manageStatus = await Permission.manageExternalStorage.request();
-          if (manageStatus.isGranted) return true;
-        }
-
-        if (status.isPermanentlyDenied) {
-          _showPermissionPermanentlyDeniedDialog();
-          return false;
-        }
-
-        _showToast("Storage permissions needed for Android 11+", isError: true);
-        return false;
-      } else {
-        // Android 10 and below just needs storage permission
-        var status = await Permission.storage.request();
-        if (status.isGranted) return true;
-
-        if (status.isPermanentlyDenied) {
-          _showPermissionPermanentlyDeniedDialog();
-          return false;
-        }
-
-        _showToast("Storage permission needed to download files", isError: true);
-        return false;
-      }
-    }
-
-    // For iOS or other platforms, we need photos permission
-    if (Platform.isIOS) {
-      var status = await Permission.photos.request();
-      if (status.isGranted) return true;
-
-      if (status.isPermanentlyDenied) {
-        _showPermissionPermanentlyDeniedDialog();
-        return false;
-      }
-
-      _showToast("Photos access needed to save files", isError: true);
+    // If permanently denied, guide user to settings
+    if (photoStatus.isPermanentlyDenied) {
+      _showPermissionPermanentlyDeniedDialog(isIOS: true);
       return false;
     }
 
-    // Default allow for other platforms
-    return true;
+    // Show rationale if needed
+    if (photoStatus.isDenied) {
+      bool shouldContinue = await _showPermissionRationaleDialog(
+          "Photos Access Required",
+          "We need access to your Photos library to save Excel files. This permission is required to download product data."
+      );
+
+      if (!shouldContinue) return false;
+    }
+
+    // Request the permission
+    final result = await Permission.photos.request();
+
+    if (result.isPermanentlyDenied) {
+      _showPermissionPermanentlyDeniedDialog(isIOS: true);
+      return false;
+    }
+
+    if (!result.isGranted) {
+      _showToast("Photos access needed to save Excel files", isError: true);
+    }
+
+    return result.isGranted;
   }
 
-  void _showPermissionPermanentlyDeniedDialog() {
+  void _showPermissionPermanentlyDeniedDialog({bool isIOS = false}) {
+    final String title = isIOS ? 'Photos Access Denied' : 'Storage Access Denied';
+    final String message = isIOS
+        ? 'This app needs access to your Photos to save Excel files.\n\nPlease enable it in Settings > Privacy > Photos.'
+        : 'Storage permission is required but has been denied.\n\nPlease enable it in Settings > Apps > [App Name] > Permissions.';
+    final String settingsButtonText = isIOS ? 'Open Settings' : 'App Settings';
+
     showDialog(
       context: context,
+      barrierDismissible: false,
       builder: (BuildContext context) {
         return Dialog(
           shape: RoundedRectangleBorder(
@@ -732,21 +562,25 @@ class _UserDashboardScreenState extends State<UserDashboardScreen>
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                const Icon(Icons.block, size: 48, color: Colors.redAccent),
+                Icon(
+                    isIOS ? Icons.photo_library : Icons.sd_storage,
+                    size: 48,
+                    color: Colors.redAccent
+                ),
                 const SizedBox(height: 16),
-                const Text(
-                  'Permission Denied',
-                  style: TextStyle(
+                Text(
+                  title,
+                  style: const TextStyle(
                     fontSize: 18,
                     fontWeight: FontWeight.bold,
                     color: Colors.redAccent,
                   ),
                 ),
                 const SizedBox(height: 12),
-                const Text(
-                  'Storage permission is required to download files but has been permanently denied.\n\nPlease enable it manually in app settings.',
+                Text(
+                  message,
                   textAlign: TextAlign.center,
-                  style: TextStyle(fontSize: 15),
+                  style: const TextStyle(fontSize: 15),
                 ),
                 const SizedBox(height: 24),
                 Row(
@@ -761,7 +595,7 @@ class _UserDashboardScreenState extends State<UserDashboardScreen>
                             borderRadius: BorderRadius.circular(10),
                           ),
                         ),
-                        child: const Text('Cancel'),
+                        child: const Text('Not Now'),
                       ),
                     ),
                     const SizedBox(width: 12),
@@ -778,7 +612,7 @@ class _UserDashboardScreenState extends State<UserDashboardScreen>
                             borderRadius: BorderRadius.circular(10),
                           ),
                         ),
-                        child: const Text('Open Settings'),
+                        child: Text(settingsButtonText),
                       ),
                     ),
                   ],
@@ -791,12 +625,327 @@ class _UserDashboardScreenState extends State<UserDashboardScreen>
     );
   }
 
-  Future<bool> _checkInternetStatus() async {
+  Future<bool> _showPermissionRationaleDialog(String title, String message) async {
+    return (await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (BuildContext context) {
+        return Dialog(
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16),
+          ),
+          child: Padding(
+            padding: const EdgeInsets.all(20),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Icon(Icons.info_outline, size: 48, color: Color(0xff185794)),
+                const SizedBox(height: 16),
+                Text(
+                  title,
+                  style: const TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                  ),
+                  textAlign: TextAlign.center,
+                ),
+                const SizedBox(height: 12),
+                Text(
+                  message,
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(fontSize: 15),
+                ),
+                const SizedBox(height: 24),
+                Row(
+                  children: [
+                    Expanded(
+                      child: ElevatedButton(
+                        onPressed: () => Navigator.of(context).pop(false),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.grey.shade300,
+                          foregroundColor: Colors.black,
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                        ),
+                        child: const Text("Not Now"),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: ElevatedButton(
+                        onPressed: () => Navigator.of(context).pop(true),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: const Color(0xff185794),
+                          foregroundColor: Colors.white,
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                        ),
+                        child: const Text("Continue"),
+                      ),
+                    ),
+                  ],
+                )
+              ],
+            ),
+          ),
+        );
+      },
+    )) ?? false;
+  }
+
+  Future<void> _downloadExcelFile() async {
+    setState(() => _isLoading = true);
+
     try {
-      final result = await InternetAddress.lookup('google.com');
-      return result.isNotEmpty && result[0].rawAddress.isNotEmpty;
-    } on SocketException {
-      return false;
+      if (!_isConnected) {
+        _showToast("No internet connection", isError: true);
+        setState(() => _isLoading = false);
+        return;
+      }
+
+      // Check if permission is granted first
+      final hasPermission = await _checkAndRequestStoragePermission();
+      if (!hasPermission) {
+        setState(() => _isLoading = false);
+        return;
+      }
+
+      // Show downloading progress indicator
+      _showToast("Downloading Excel file...");
+
+      final url = Uri.parse("http://13.49.224.44:8080/api/product/download");
+      final filename = "product_list_${DateTime.now().millisecondsSinceEpoch}.xlsx";
+
+      // Get appropriate directory per platform with error handling
+      Directory? directory;
+
+      try {
+        if (Platform.isAndroid) {
+          // First try the Download directory
+          try {
+            directory = Directory("/storage/emulated/0/Download");
+            if (!(await directory.exists())) {
+              // Try Documents directory
+              try {
+                directory = await getExternalStorageDirectory();
+              } catch (e) {
+                debugPrint("Failed to get external storage directory: $e");
+                // Fall back to app-specific directory
+                directory = await getApplicationDocumentsDirectory();
+              }
+            }
+          } catch (e) {
+            debugPrint("Failed to access Download directory: $e");
+            // Final fallback
+            directory = await getApplicationDocumentsDirectory();
+          }
+        } else if (Platform.isIOS) {
+          // For iOS, we use the documents directory which is accessible and sandboxed
+          try {
+            directory = await getApplicationDocumentsDirectory();
+          } catch (e) {
+            debugPrint("Failed to get iOS documents directory: $e");
+            throw Exception("Cannot access storage directory on iOS");
+          }
+        } else {
+          directory = await getApplicationDocumentsDirectory();
+        }
+      } catch (e) {
+        debugPrint("Error getting directory: $e");
+        _showToast("Failed to access storage directory: ${e.toString()}", isError: true);
+        setState(() => _isLoading = false);
+        return;
+      }
+
+      if (directory == null) {
+        _showToast("Failed to access storage directory", isError: true);
+        setState(() => _isLoading = false);
+        return;
+      }
+
+      final downloadPath = "${directory.path}/$filename";
+      debugPrint("Downloading to: $downloadPath");
+
+      try {
+        final response = await http.get(url);
+
+        if (response.statusCode == 200) {
+          final file = File(downloadPath);
+          await file.writeAsBytes(response.bodyBytes);
+
+          if (mounted) {
+            // For iOS, show different message with option to "Share" instead of "Open"
+            if (Platform.isIOS) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                  content: Text("Excel file downloaded successfully"),
+                  backgroundColor: Colors.green.shade700,
+                  duration: const Duration(seconds: 4),
+                  action: SnackBarAction(
+                    label: "Share",
+                    textColor: Colors.white,
+                    onPressed: () async {
+                      await Share.shareXFiles([XFile(downloadPath)], text: 'Product List Excel');
+                    },
+                  ),
+                ),
+              );
+            } else {
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                  content: Text("Excel downloaded to: $downloadPath"),
+                  backgroundColor: Colors.green.shade700,
+                  duration: const Duration(seconds: 4),
+                  action: SnackBarAction(
+                    label: "Open",
+                    textColor: Colors.white,
+                    onPressed: () => OpenFile.open(downloadPath),
+                  ),
+                ),
+              );
+            }
+          }
+        } else {
+          _showToast("Failed to download Excel file (Status: ${response.statusCode})", isError: true);
+        }
+      } catch (e) {
+        debugPrint("HTTP or file writing error: $e");
+        _showToast("Download error: ${e.toString()}", isError: true);
+      }
+    } catch (e) {
+      debugPrint("Download error: $e");
+      _showToast("Error: ${e.toString()}", isError: true);
+    } finally {
+      setState(() => _isLoading = false);
+    }
+  }
+
+  Future<bool> _handleAndroidPermissions() async {
+    final deviceInfo = DeviceInfoPlugin();
+    final androidInfo = await deviceInfo.androidInfo;
+    final sdkInt = androidInfo.version.sdkInt;
+
+    // Android 13+ (API 33+)
+    if (sdkInt >= 33) {
+      // For Android 13+, we need specific media permissions
+      final photos = await Permission.photos.status;
+      final videos = await Permission.videos.status;
+      final audio = await Permission.audio.status;
+      final mediaLibrary = await Permission.mediaLibrary.status;
+
+      // If all permissions are already granted
+      if (photos.isGranted && videos.isGranted && audio.isGranted && mediaLibrary.isGranted) {
+        return true;
+      }
+
+      // If any permission is permanently denied, guide user to settings
+      if (photos.isPermanentlyDenied || videos.isPermanentlyDenied ||
+          audio.isPermanentlyDenied || mediaLibrary.isPermanentlyDenied) {
+        _showPermissionPermanentlyDeniedDialog();
+        return false;
+      }
+
+      // Show rationale if needed
+      if (photos.isDenied || videos.isDenied || audio.isDenied || mediaLibrary.isDenied) {
+        bool shouldContinue = await _showPermissionRationaleDialog(
+            "Media Access Required",
+            "We need permission to access your media to save and load files. Please grant access to continue."
+        );
+
+        if (!shouldContinue) return false;
+      }
+
+      // Request all necessary permissions
+      Map<Permission, PermissionStatus> statuses = await [
+        Permission.photos,
+        Permission.videos,
+        Permission.audio,
+        Permission.mediaLibrary,
+      ].request();
+
+      // Check if all permissions are granted
+      bool allGranted = !statuses.values.any((status) => !status.isGranted);
+
+      if (!allGranted) {
+        _showToast("All media permissions are required to download files", isError: true);
+      }
+
+      return allGranted;
+    }
+    // Android 11-12 (API 30-32)
+    else if (sdkInt >= 30) {
+      // For Android 11+, check if we have manage external storage permission
+      final storage = await Permission.storage.status;
+      final manage = await Permission.manageExternalStorage.status;
+
+      // Best case: both permissions granted
+      if (storage.isGranted && manage.isGranted) {
+        return true;
+      }
+
+      // Show rationale if needed
+      bool shouldContinue = await _showPermissionRationaleDialog(
+          "Storage Access Required",
+          "We need full storage access to download and save files on Android 11+. Please grant all requested permissions."
+      );
+
+      if (!shouldContinue) return false;
+
+      // Request basic storage first
+      PermissionStatus storageStatus = await Permission.storage.request();
+
+      if (!storageStatus.isGranted) {
+        if (storageStatus.isPermanentlyDenied) {
+          _showPermissionPermanentlyDeniedDialog();
+        }
+        return false;
+      }
+
+      // Then request manage storage
+      PermissionStatus manageStatus = await Permission.manageExternalStorage.request();
+
+      if (!manageStatus.isGranted) {
+        if (manageStatus.isPermanentlyDenied) {
+          _showPermissionPermanentlyDeniedDialog();
+          return false;
+        }
+
+        _showToast("Full storage access is needed for Android 11+", isError: true);
+        return false;
+      }
+
+      return true;
+    }
+    // Android 10 and below (API < 30)
+    else {
+      final status = await Permission.storage.status;
+
+      if (status.isGranted) return true;
+
+      if (status.isPermanentlyDenied) {
+        _showPermissionPermanentlyDeniedDialog();
+        return false;
+      }
+
+      // Show rationale if needed
+      if (status.isDenied) {
+        bool shouldContinue = await _showPermissionRationaleDialog(
+            "Storage Permission Required",
+            "We need permission to access your device storage to save files. Please grant access to continue."
+        );
+
+        if (!shouldContinue) return false;
+      }
+
+      final result = await Permission.storage.request();
+
+      if (result.isPermanentlyDenied) {
+        _showPermissionPermanentlyDeniedDialog();
+      }
+
+      return result.isGranted;
     }
   }
 
@@ -804,7 +953,6 @@ class _UserDashboardScreenState extends State<UserDashboardScreen>
     final now = DateTime.now();
     return '${now.hour}:${now.minute.toString().padLeft(2, '0')}';
   }
-
   Future<void> _loadProductData({int page = 0}) async {
     setState(() {
       _isProductsLoading = true;
@@ -851,14 +999,6 @@ class _UserDashboardScreenState extends State<UserDashboardScreen>
       });
     }
   }
-
-  void _navigateToApprovalScreen() {
-    Navigator.pushReplacement(
-      context,
-      MaterialPageRoute(builder: (_) => const AdminApprovalScreen()),
-    );
-  }
-
   void _navigateToLogin() {
     SharedPreferenceHelper.clearSession().then((_) {
       Navigator.pushReplacement(
@@ -867,32 +1007,10 @@ class _UserDashboardScreenState extends State<UserDashboardScreen>
       );
     });
   }
-
-  void _searchProducts(String query) {
-    if (query.trim().isEmpty) {
-      setState(() {
-        _filteredProducts = _allProducts;
-        _currentPage = 0;
-        _updateHasMore();
-      });
-      return;
-    }
-
-    setState(() {
-      _filteredProducts = _allProducts.where((product) {
-        final medicineName = product.medicineName?.toLowerCase() ?? '';
-        final genericName = product.genericName?.toLowerCase() ?? '';
-        return medicineName.contains(query.toLowerCase()) ||
-            genericName.contains(query.toLowerCase());
-      }).toList();
-      _currentPage = 0;
-      _updateHasMore();
-    });
-  }
-
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
+    _connectivitySubscription.cancel();
     _searchController.dispose();
     super.dispose();
   }
@@ -903,11 +1021,9 @@ class _UserDashboardScreenState extends State<UserDashboardScreen>
       _validateUserAndLoadData();
     }
   }
-
   void _updateHasMore() {
     _hasMore = ((_currentPage + 1) * _itemsPerPage) < _totalProductCount;
   }
-
   Future<void> _logout() async {
     try {
       final email = await SharedPreferenceHelper.getUserEmail();
@@ -928,35 +1044,6 @@ class _UserDashboardScreenState extends State<UserDashboardScreen>
       );
     }
   }
-
-  List<Map<String, String>> _getCurrentPageItems() {
-    // Handle empty list case
-    if (_filteredProducts.isEmpty) {
-      return [];
-    }
-
-    int start = _currentPage * _itemsPerPage;
-
-    // Ensure start index is valid
-    if (start >= _filteredProducts.length) {
-      // If current page is too large, reset to page 0
-      _currentPage = 0;
-      start = 0;
-    }
-
-    int end = min(start + _itemsPerPage, _filteredProducts.length);
-
-    // Convert Products objects to Map<String, String>
-    return _filteredProducts.sublist(start, end).map((product) {
-      return {
-        'medicineName': product.medicineName ?? 'Unknown Medicine',
-        'genericName': product.genericName ?? 'Unknown Generic Name',
-        'manufacturedBy': product.manufacturedBy ?? 'Not Available',
-        'indication': product.indication ?? 'Not Available',
-      };
-    }).toList();
-  }
-
   Widget _buildPagination() {
     if (_filteredProducts.isEmpty && _currentPage == 0) {
       return const SizedBox.shrink(); // No pagination needed
@@ -964,65 +1051,33 @@ class _UserDashboardScreenState extends State<UserDashboardScreen>
 
     const int itemsPerPage = 10;
     final int totalPages = (_totalProductCount / itemsPerPage).ceil();
-    final int maxPagesToShow = 5;
+    const int maxPagesToShow = 7; // ✅ Show fewer pages to avoid overflow
 
-    // Debug print for pagination state
-    debugPrint('Building pagination UI with _currentPage = $_currentPage');
-    debugPrint('Total pages: $totalPages');
-
-    // Calculate which pages to show
-    int startPage = max(0, min(_currentPage - 2, totalPages - maxPagesToShow));
+    int startPage = max(0, min(_currentPage - (maxPagesToShow ~/ 2), totalPages - maxPagesToShow));
     int endPage = min(startPage + maxPagesToShow - 1, totalPages - 1);
 
-    debugPrint('Pagination range: $startPage to $endPage');
-
-    final double screenWidth = MediaQuery.of(context).size.width;
-    final bool isSmallScreen = screenWidth < 400;
-    final bool isTablet = screenWidth >= 600;
-
-    final double buttonSize = isSmallScreen ? 26 : isTablet ? 36 : 30;
-    final double fontSize = isSmallScreen ? 13 : isTablet ? 17 : 15;
+    // ✅ Slightly smaller, fixed-size buttons and font
+    final double buttonSize = 30;
+    final double fontSize = 14;
 
     return Align(
       alignment: Alignment.bottomLeft,
       child: Container(
-        padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 24),
+        padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 20),
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            // Previous button
+            // Previous Button
             if (_currentPage > 0)
-              InkWell(
-                onTap: () {
-                  if (_selectedMedicalField != null && _selectedMedicalField != 'All') {
-                    _loadProductsByField(_selectedMedicalField!, page: _currentPage - 1);
-                  } else {
-                    _loadProductData(page: _currentPage - 1);
-                  }
-                },
-                borderRadius: BorderRadius.circular(6),
-                child: Container(
-                  width: buttonSize,
-                  height: buttonSize,
-                  alignment: Alignment.center,
-                  child: Icon(
-                    Icons.chevron_left,
-                    color: const Color(0xff185794),
-                    size: fontSize + 2,
-                  ),
-                ),
-              ),
+              _buildPageArrow(isNext: false, fontSize: fontSize, buttonSize: buttonSize),
 
-            // Page number buttons
+            // Page Numbers
             ...List.generate(endPage - startPage + 1, (index) {
               final int pageNumber = startPage + index;
-
-              // Debug the check for selected page
               final bool isSelected = pageNumber == _currentPage;
-              debugPrint('Page ${pageNumber + 1}: isSelected = $isSelected, _currentPage = $_currentPage');
 
               return Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 6), // Adjust spacing here
+                padding: const EdgeInsets.symmetric(horizontal: 4),
                 child: InkWell(
                   onTap: () {
                     if (_currentPage != pageNumber) {
@@ -1047,9 +1102,9 @@ class _UserDashboardScreenState extends State<UserDashboardScreen>
                     child: Text(
                       '${pageNumber + 1}',
                       style: TextStyle(
-                        color: const Color(0xff185794),
-                        fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
                         fontSize: fontSize,
+                        fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+                        color: const Color(0xff185794),
                       ),
                     ),
                   ),
@@ -1057,34 +1112,37 @@ class _UserDashboardScreenState extends State<UserDashboardScreen>
               );
             }),
 
-            // Next button
+            // Next Button
             if (((_currentPage + 1) * itemsPerPage) < _totalProductCount)
-              InkWell(
-                onTap: () {
-                  if (_selectedMedicalField != null && _selectedMedicalField != 'All') {
-                    _loadProductsByField(_selectedMedicalField!, page: _currentPage + 1);
-                  } else {
-                    _loadProductData(page: _currentPage + 1);
-                  }
-                },
-                borderRadius: BorderRadius.circular(6),
-                child: Container(
-                  width: buttonSize,
-                  height: buttonSize,
-                  alignment: Alignment.center,
-                  child: Icon(
-                    Icons.chevron_right,
-                    color: const Color(0xff185794),
-                    size: fontSize + 2,
-                  ),
-                ),
-              ),
+              _buildPageArrow(isNext: true, fontSize: fontSize, buttonSize: buttonSize),
           ],
         ),
       ),
     );
   }
-
+  Widget _buildPageArrow({required bool isNext, required double fontSize, required double buttonSize}) {
+    return InkWell(
+      onTap: () {
+        final newPage = isNext ? _currentPage + 1 : _currentPage - 1;
+        if (_selectedMedicalField != null && _selectedMedicalField != 'All') {
+          _loadProductsByField(_selectedMedicalField!, page: newPage);
+        } else {
+          _loadProductData(page: newPage);
+        }
+      },
+      borderRadius: BorderRadius.circular(6),
+      child: Container(
+        width: buttonSize,
+        height: buttonSize,
+        alignment: Alignment.center,
+        child: Icon(
+          isNext ? Icons.chevron_right : Icons.chevron_left,
+          color: const Color(0xff185794),
+          size: fontSize + 4,
+        ),
+      ),
+    );
+  }
   Widget _buildHorizontalMenu() {
     return SingleChildScrollView(
       scrollDirection: Axis.horizontal,
@@ -1102,9 +1160,6 @@ class _UserDashboardScreenState extends State<UserDashboardScreen>
       ),
     );
   }
-
-
-
   Widget _buildMenuItem(IconData icon, String label) {
     final isSelected = (_selectedMedicalField ?? "All") == label;
 
@@ -1135,9 +1190,7 @@ class _UserDashboardScreenState extends State<UserDashboardScreen>
       ),
     );
   }
-
-
-  Widget _buildAppBar() {
+  Widget _buildActiveAppBar() {
     final screenWidth = MediaQuery.of(context).size.width;
     final isSmallScreen = screenWidth < 600;
     final horizontalPadding = isSmallScreen ? 12.0 : 24.0;
@@ -1148,13 +1201,22 @@ class _UserDashboardScreenState extends State<UserDashboardScreen>
       child: Row(
         children: [
           Image.asset(
-            'assets/images/pharmafive_512x512.png',
+            'assets/images/logo_pf.png',
             width: 60,
             height: 60,
             errorBuilder: (_, __, ___) =>
                 const Icon(Icons.local_pharmacy, size: 40, color: Colors.blue),
           ),
           const Spacer(),
+          IconButton(
+            icon: Image.asset('assets/images/excel_icon.png', height: 24),
+            onPressed: () {
+              debugPrint("Excel file downloaded!");
+              _downloadExcelFile();
+              // _downloadExcel();
+            },
+            tooltip: 'Download as Excel',
+          ),
           IconButton(
             icon: const Icon(Icons.logout, color: Color(0xff262A88), size: 28),
             onPressed: _showLogoutDialog,
@@ -1163,7 +1225,41 @@ class _UserDashboardScreenState extends State<UserDashboardScreen>
       ),
     );
   }
+  Widget _buildInactiveAppBar() {
+    final screenWidth = MediaQuery.of(context).size.width;
+    final isSmallScreen = screenWidth < 600;
+    final horizontalPadding = isSmallScreen ? 12.0 : 24.0;
 
+    return Padding(
+      padding:
+          EdgeInsets.symmetric(horizontal: horizontalPadding, vertical: 16),
+      child: Row(
+        children: [
+          Image.asset(
+            'assets/images/logo_pf.png',
+            width: 60,
+            height: 60,
+            errorBuilder: (_, __, ___) =>
+                const Icon(Icons.local_pharmacy, size: 40, color: Colors.blue),
+          ),
+          const Spacer(),
+          // IconButton(
+          //   icon: Image.asset('assets/images/excel_icon.png', height: 24),
+          //   onPressed: () {
+          //     debugPrint("Excel file downloaded!");
+          //     _downloadExcelFile();
+          //     // _downloadExcel();
+          //   },
+          //   tooltip: 'Download as Excel',
+          // ),
+          IconButton(
+            icon: const Icon(Icons.logout, color: Color(0xff262A88), size: 28),
+            onPressed: _showLogoutDialog,
+          )
+        ],
+      ),
+    );
+  }
   // Get color based on status
   Color _getStatusColor(String status) {
     switch (status.toLowerCase()) {
@@ -1179,7 +1275,6 @@ class _UserDashboardScreenState extends State<UserDashboardScreen>
         return Colors.grey;
     }
   }
-
   // Get status display text
   String _getStatusText() {
     switch (_userStatus.toLowerCase()) {
@@ -1190,20 +1285,19 @@ class _UserDashboardScreenState extends State<UserDashboardScreen>
       case 'blocked':
         return 'Blocked ✗';
       case 'pending':
-        return 'Pending Review';
+        return 'Pending';
       default:
         return 'Unknown';
     }
   }
-
   Widget _buildPendingApprovalMessage() {
     return Expanded(
       child: Center(
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Lottie.asset("assets/animations/waiting.json",
-                width: 300, height: 150),
+            Lottie.asset("assets/animations/user_waiting.json",
+                width: 350, height: 200),
             const SizedBox(height: 24),
 
             // Status indicator
@@ -1325,7 +1419,6 @@ class _UserDashboardScreenState extends State<UserDashboardScreen>
       ),
     );
   }
-
   Widget _buildProductListing() {
     final screenWidth = MediaQuery.of(context).size.width;
     final isSmallScreen = screenWidth < 600;
@@ -1356,6 +1449,7 @@ class _UserDashboardScreenState extends State<UserDashboardScreen>
             _buildHorizontalMenu(),
             const SizedBox(height: 1),
             _buildTableHeader(horizontalPadding),
+            _buildConnectionBanner(),
             const SizedBox(height: 1),
             Expanded(
               child: _isProductsLoading
@@ -1375,7 +1469,6 @@ class _UserDashboardScreenState extends State<UserDashboardScreen>
       ),
     );
   }
-
   Widget _buildSearchBar(double horizontalPadding) {
     return Padding(
       padding: EdgeInsets.symmetric(horizontal: horizontalPadding),
@@ -1417,7 +1510,6 @@ class _UserDashboardScreenState extends State<UserDashboardScreen>
       ),
     );
   }
-
   Widget _buildTableHeader(double horizontalPadding) {
     return Padding(
       padding: EdgeInsets.symmetric(horizontal: horizontalPadding),
@@ -1453,7 +1545,6 @@ class _UserDashboardScreenState extends State<UserDashboardScreen>
       ),
     );
   }
-
   Widget _buildLoadingIndicator() {
     return const Center(
       child: Column(
@@ -1479,30 +1570,57 @@ class _UserDashboardScreenState extends State<UserDashboardScreen>
         children: [
           Lottie.asset(
             "assets/animations/internet.json",
-            width: 250,
-            height: 250,
+            width: 200,
+            height: 200,
             fit: BoxFit.contain,
           ),
           const SizedBox(height: 16),
-          Text(
+          const Text(
+            'No Internet Connection',
+            style: TextStyle(
+              fontSize: 16,
+              fontWeight: FontWeight.w500,
+              color: Colors.grey,
+            ),
+          ),
+          /*Text(
             _errorMessage,
             style: const TextStyle(color: Colors.red, fontSize: 16),
             textAlign: TextAlign.center,
           ),
-          const SizedBox(height: 24),
-          ElevatedButton(
-            onPressed: _loadProductData,
-            style: ElevatedButton.styleFrom(
-              backgroundColor: const Color(0xff185794),
-              foregroundColor: Colors.white,
-            ),
-            child: const Text("Try Again"),
+          const SizedBox(height: 24),*/
+          // ElevatedButton(
+          //   onPressed: _loadProductData,
+          //   style: ElevatedButton.styleFrom(
+          //     backgroundColor: const Color(0xff185794),
+          //     foregroundColor: Colors.white,
+          //   ),
+          //   child: const Text("Try Again"),
+          // ),
+        ],
+      ),
+    );
+  }
+  Widget _buildConnectionBanner() {
+    if (_isConnected) return const SizedBox.shrink();
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(vertical: 6,),
+      color: Colors.orange.shade100,
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: const [
+          Icon(Icons.wifi_off, size: 16, color: Colors.orange),
+          SizedBox(width: 8),
+          Text(
+            'Waiting for connection...',
+            style: TextStyle(color: Colors.orange, fontSize: 12),
           ),
         ],
       ),
     );
   }
-
   Widget _buildEmptyState() {
     return Center(
       child: Column(
@@ -1510,8 +1628,8 @@ class _UserDashboardScreenState extends State<UserDashboardScreen>
         children: [
           Lottie.asset(
             "assets/animations/internet.json",
-            width: 250,
-            height: 250,
+            width: 200,
+            height: 200,
             fit: BoxFit.contain,
           ),
           const SizedBox(height: 16),
@@ -1524,23 +1642,23 @@ class _UserDashboardScreenState extends State<UserDashboardScreen>
             style: TextStyle(
               fontSize: 16,
               fontWeight: FontWeight.w500,
-              color: _isConnected ? Colors.grey.shade700 : Colors.redAccent,
+              color: Colors.grey,
+              // color: _isConnected ? Colors.grey.shade700 : Colors.redAccent,
             ),
           ),
-          const SizedBox(height: 12),
-          if (!_isConnected)
-            IconButton(
-              onPressed: () {
-                _updateInternetStatus();
-                _loadProductData();
-              },
-              icon: const Icon(Icons.refresh, color: Color(0xff185794), size: 40),
-            ),
+          // const SizedBox(height: 12),
+          // if (!_isConnected)
+          //   IconButton(
+          //     onPressed: () {
+          //       _startConnectivityListener();
+          //       _loadProductData();
+          //     },
+          //     icon: const Icon(Icons.refresh, color: Color(0xff185794), size: 40),
+          //   ),
         ],
       ),
     );
   }
-
   // Extracted method for the ListView to use with RefreshIndicator
   Widget _buildProductListView(double horizontalPadding) {
     if (!_isConnected) {
@@ -1550,8 +1668,8 @@ class _UserDashboardScreenState extends State<UserDashboardScreen>
           children: [
             Lottie.asset(
               "assets/animations/internet.json",
-              width: 250,
-              height: 250,
+              width: 200,
+              height: 200,
               fit: BoxFit.contain,
             ),
             const SizedBox(height: 16),
@@ -1564,13 +1682,13 @@ class _UserDashboardScreenState extends State<UserDashboardScreen>
               ),
             ),
             const SizedBox(height: 8),
-            ElevatedButton(
-              onPressed: () {
-                _updateInternetStatus();
-                _loadProductData();
-              },
-              child: const Text('Retry'),
-            ),
+            // ElevatedButton(
+            //   onPressed: () {
+            //     _startConnectivityListener();
+            //     _loadProductData();
+            //   },
+            //   child: const Text('Retry'),
+            // ),
           ],
         ),
       );
@@ -1582,34 +1700,23 @@ class _UserDashboardScreenState extends State<UserDashboardScreen>
       itemCount: _filteredProducts.length + 1, // +1 for pull-to-refresh note
       itemBuilder: (context, index) {
         if (index == 0) {
-          return Center(
-            child: Padding(
-              padding: const EdgeInsets.only(top: 12, bottom: 8),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                mainAxisAlignment: MainAxisAlignment.center,
-                crossAxisAlignment: CrossAxisAlignment.center,
-                children: [
-                  Text(
-                    "↓ Pull down to refresh account status ↓",
-                    style: TextStyle(
-                      color: Colors.grey.shade400,
-                      fontSize: 13,
-                      fontStyle: FontStyle.italic,
-                    ),
-                  ),
-                  const SizedBox(width: 10),
-                  IconButton(
-                    icon: Image.asset('assets/images/excel_icon.png', height: 24),
-                    onPressed: () {
-                      debugPrint("Excel file downloaded!");
-                      _downloadExcelFile();
-                      // _downloadExcel();
-                    },
-                    tooltip: 'Download as Excel',
-                  ),
-                ],
-              ),
+          return
+            Center(
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              mainAxisAlignment: MainAxisAlignment.center,
+              crossAxisAlignment: CrossAxisAlignment.center,
+              children: [
+                // Text(
+                //   "↓ Pull down to refresh account status ↓",
+                //   style: TextStyle(
+                //     color: Colors.grey.shade400,
+                //     fontSize: 13,
+                //     fontStyle: FontStyle.italic,
+                //   ),
+                // ),
+                // const SizedBox(width: 10),
+              ],
             ),
           );
         }
@@ -1696,204 +1803,22 @@ class _UserDashboardScreenState extends State<UserDashboardScreen>
       },
     );
   }
-
-  Future<void> _downloadExcel() async {
-    const downloadUrl = 'https://yourapi.com/download-excel'; // Replace with your API
-
-    try {
-      showDialog(
-        context: context,
-        barrierDismissible: false,
-        builder: (_) => const Center(child: CircularProgressIndicator()),
-      );
-
-      final response = await http.get(Uri.parse(downloadUrl));
-
-      Navigator.of(context).pop(); // Close loading indicator
-
-      if (response.statusCode == 200) {
-        final bytes = response.bodyBytes;
-        final directory = await getApplicationDocumentsDirectory();
-        final filePath = '${directory.path}/product_report.xlsx';
-        final file = File(filePath);
-        await file.writeAsBytes(bytes);
-
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Download complete!')),
-        );
-
-        await OpenFile.open(filePath);
-      } else {
-        throw Exception('Failed to download Excel. Status: ${response.statusCode}');
-      }
-    } catch (e) {
-      Navigator.of(context).pop(); // Ensure dialog is closed
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Error: ${e.toString()}')),
-      );
-    }
-  }
-
-  void _showProductDetails(Map<String, String> product) {
-    showDialog(
-      context: context,
-      builder: (BuildContext context) {
-        return Dialog(
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(16),
-          ),
-          elevation: 0,
-          backgroundColor: Colors.transparent,
-          child: Container(
-            padding: const EdgeInsets.all(20),
-            decoration: BoxDecoration(
-              color: Colors.white,
-              shape: BoxShape.rectangle,
-              borderRadius: BorderRadius.circular(16),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black26,
-                  blurRadius: 10.0,
-                  offset: const Offset(0.0, 10.0),
-                ),
-              ],
-            ),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                // Header with gradient background
-                Container(
-                  padding: const EdgeInsets.symmetric(vertical: 12),
-                  decoration: BoxDecoration(
-                    gradient: const LinearGradient(
-                      colors: [Color(0xff262A88), Color(0xff185794)],
-                      begin: Alignment.centerLeft,
-                      end: Alignment.centerRight,
-                    ),
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  width: double.infinity,
-                  child: Center(
-                    child: Text(
-                      product['medicineName'] ?? 'Product Details',
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontWeight: FontWeight.bold,
-                        fontSize: 18,
-                      ),
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 20),
-
-                // Content
-                SingleChildScrollView(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      _detailRow('Generic Name',
-                          product['genericName'] ?? 'Not available',
-                          Icons.medication),
-                      const Divider(),
-                      _detailRow('Manufactured By',
-                          product['manufacturedBy'] ?? 'Not available',
-                          Icons.factory),
-                      const Divider(),
-                      _detailRow('Indications',
-                          product['indication'] ?? 'Not available',
-                          Icons.healing),
-                    ],
-                  ),
-                ),
-
-                const SizedBox(height: 20),
-
-                // Close button
-                ElevatedButton(
-                  onPressed: () => Navigator.of(context).pop(),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color(0xff185794),
-                    foregroundColor: Colors.white,
-                    minimumSize: const Size(120, 40),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                  ),
-                  child: const Text('Close',
-                      style: TextStyle(fontSize: 16)),
-                ),
-              ],
-            ),
-          ),
-        );
-      },
-    );
-  }
-
-  Widget _detailRow(String label, String value, IconData icon) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 8.0),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Container(
-            padding: const EdgeInsets.all(8),
-            decoration: BoxDecoration(
-              color: const Color(0xff262A88).withOpacity(0.1),
-              borderRadius: BorderRadius.circular(8),
-            ),
-            child: Icon(
-              icon,
-              color: const Color(0xff262A88),
-              size: 24,
-            ),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  label,
-                  style: const TextStyle(
-                    fontWeight: FontWeight.bold,
-                    fontSize: 16,
-                    color: Color(0xff262A88),
-                  ),
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  value,
-                  style: TextStyle(
-                    fontSize: 15,
-                    color: Colors.grey.shade800,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
     if (_isLoading) {
       return const Scaffold(
-        body: Center(child: CircularProgressIndicator()),
+        body: Center(child: CircularProgressIndicator(color: Color(0xff185794))),
       );
     }
 
     return Scaffold(
       key: ValueKey<int>(_currentPage), // Force rebuild when page changes
-      backgroundColor: Colors.white,
+      backgroundColor: !isUserActive ? Color(0xffeceef3) :Colors.white,
       body: SafeArea(
         child: Column(
           children: [
             // Top Bar (visible for both active and pending/rejected users)
-            _buildAppBar(),
+            isUserActive ? _buildActiveAppBar() : _buildInactiveAppBar(),
             // Content based on user status
             isUserActive
                 ? _buildProductListing()
@@ -1903,7 +1828,6 @@ class _UserDashboardScreenState extends State<UserDashboardScreen>
       ),
     );
   }
-
   void _showLogoutDialog() {
     showDialog(
       context: context,

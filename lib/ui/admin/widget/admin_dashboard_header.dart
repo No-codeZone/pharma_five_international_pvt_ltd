@@ -198,7 +198,7 @@ class _AdminDashboardHeaderState extends State<AdminDashboardHeader> {
           Container(
             padding: const EdgeInsets.all(8),
             child: Image.asset(
-              'assets/images/pharmafive_512x512.png',
+              'assets/images/logo_pf.png',
               width: 80,
               height: 80,
               errorBuilder: (context, error, stackTrace) {

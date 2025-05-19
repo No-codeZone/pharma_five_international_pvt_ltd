@@ -66,7 +66,7 @@ class _AddProductState extends State<AddProduct> {
                   IconButton(
                       onPressed: () => Navigator.pop(context),
                       icon: const Icon(Icons.arrow_back, color: Colors.blue)),
-                  Image.asset('assets/images/pharmafive_512x512.png',
+                  Image.asset('assets/images/logo_pf.png',
                       width: 60, height: 60),
                 ],
               ),

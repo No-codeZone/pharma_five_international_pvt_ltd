@@ -1,8 +1,11 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
+import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:fluttertoast/fluttertoast.dart';
+import 'package:http/http.dart' as http;
 import 'package:lottie/lottie.dart';
 import 'package:pharma_five/service/api_service.dart';
 
@@ -34,12 +37,12 @@ class _UserListTabState extends State<UserListTab> {
   // Connectivity monitoring
   final Connectivity _connectivity = Connectivity();
   late StreamSubscription<List<ConnectivityResult>> _connectivitySubscription;
-  bool _isCheckingConnectivity = false;
 
   @override
   void initState() {
     super.initState();
     _initConnectivityMonitoring();
+    _fetchUsers();
   }
 
   @override
@@ -49,64 +52,54 @@ class _UserListTabState extends State<UserListTab> {
   }
 
   Future<void> _initConnectivityMonitoring() async {
-    // Initial connectivity check
-    await _checkInternetStatus();
+    await _checkConnectivity();
 
-    // Set up listener for connectivity changes
-    _connectivitySubscription = _connectivity.onConnectivityChanged.listen((_) {
-      _checkInternetStatus();
+    _connectivitySubscription = _connectivity.onConnectivityChanged.listen((List<ConnectivityResult> results) {
+      for (var result in results) {
+        _handleConnectivityChange(result);
+      }
     });
   }
 
-  Future<bool> _checkInternetStatus() async {
-    if (_isCheckingConnectivity) return _isConnected;
-
-    setState(() => _isCheckingConnectivity = true);
-
+  Future<void> _checkConnectivity() async {
     try {
-      final result = await InternetAddress.lookup('google.com')
-          .timeout(const Duration(seconds: 5));
-      final isNowConnected = result.isNotEmpty && result[0].rawAddress.isNotEmpty;
+      final List<ConnectivityResult> results = await _connectivity.checkConnectivity();
 
+      for (var result in results) {
+        _handleConnectivityChange(result); // ✅ now passing one at a time
+      }
+    } catch (e) {
       if (mounted) {
-        setState(() {
-          _isConnected = isNowConnected;
-          _isCheckingConnectivity = false;
-        });
+        setState(() => _isConnected = false);
+      }
+    }
+  }
 
-        // Show toast on connectivity change
-        if (_isConnected) {
+  Future<void> _handleConnectivityChange(ConnectivityResult result) async {
+    final bool wasConnected = _isConnected;
+    final bool isNowConnected = result != ConnectivityResult.none;
+
+    // Only proceed if there's an actual change in connectivity status
+    if (wasConnected != isNowConnected) {
+      // If connectivity was restored
+      if (isNowConnected && !wasConnected) {
+        // Update UI first to indicate restored connectivity
+        if (mounted) {
+          setState(() => _isConnected = true);
           _showToast("Internet connection restored", isError: false);
-          _fetchUsers();
-        } else {
+        }
+
+        // Then fetch data with a short delay to allow network to stabilize
+        await Future.delayed(const Duration(milliseconds: 500));
+        await _fetchUsers();
+      }
+      // If connectivity was lost
+      else if (!isNowConnected && wasConnected) {
+        if (mounted) {
+          setState(() => _isConnected = false);
           _showToast("No internet connection", isError: true);
         }
       }
-      return isNowConnected;
-    } on SocketException catch (_) {
-      if (mounted) {
-        setState(() {
-          _isConnected = false;
-          _isCheckingConnectivity = false;
-        });
-      }
-      return false;
-    } on TimeoutException catch (_) {
-      if (mounted) {
-        setState(() {
-          _isConnected = false;
-          _isCheckingConnectivity = false;
-        });
-      }
-      return false;
-    } catch (e) {
-      if (mounted) {
-        setState(() {
-          _isConnected = false;
-          _isCheckingConnectivity = false;
-        });
-      }
-      return false;
     }
   }
 
@@ -117,27 +110,27 @@ class _UserListTabState extends State<UserListTab> {
         children: [
           Lottie.asset(
             "assets/animations/internet.json",
-            width: 250,
-            height: 250,
+            width: 200,
+            height: 200,
             fit: BoxFit.contain,
           ),
           const SizedBox(height: 16),
           const Text(
             'No Internet Connection',
             style: TextStyle(
-              fontSize: 18,
-              fontWeight: FontWeight.bold,
+              fontSize: 16,
+              fontWeight: FontWeight.w500,
               color: Colors.grey,
             ),
           ),
-          const SizedBox(height: 8),
-          IconButton(
-            onPressed: () async {
-              final connected = await _checkInternetStatus();
-              if (connected) await _fetchUsers();
-            },
-            icon: Icon(Icons.refresh, color: Color(0xff185794), size: 40),
-          ),
+          // const SizedBox(height: 8),
+          // const Text(
+          //   'Reconnecting automatically...',
+          //   style: TextStyle(
+          //     fontSize: 14,
+          //     color: Colors.grey,
+          //   ),
+          // ),
         ],
       ),
     );
@@ -145,13 +138,12 @@ class _UserListTabState extends State<UserListTab> {
 
   Future<void> _fetchUsers() async {
     if (!_isConnected) {
-      _showToast("No internet connection. Please check your network", isError: true);
-      return;
+      return; // Don't attempt to fetch if offline
     }
 
     setState(() {
       _isLoading = true;
-      _usersList = [];
+      // Don't clear usersList here to avoid flickering when refreshing
     });
 
     try {
@@ -159,7 +151,7 @@ class _UserListTabState extends State<UserListTab> {
         page: widget.currentPage,
         size: 10,
         status: selectedStatus,
-      ).timeout(const Duration(seconds: 15));
+      ).timeout(const Duration(seconds: 10));
 
       if (mounted) {
         setState(() {
@@ -174,124 +166,31 @@ class _UserListTabState extends State<UserListTab> {
           _isLoading = false;
           _isConnected = false;
         });
-        _showToast("Network error. Please check your connection", isError: true);
       }
     } on TimeoutException catch (_) {
       if (mounted) {
         setState(() {
           _isLoading = false;
         });
-        _showToast("Request timed out. Please try again", isError: true);
+        _showToast("Request timed out", isError: true);
       }
     } catch (e) {
       if (mounted) {
         setState(() {
           _isLoading = false;
-          _usersList = [];
         });
         _showToast("Failed to load users", isError: true);
       }
     }
   }
 
-  Future<void> _retryConnection() async {
-    setState(() => _isLoading = true);
-    final connected = await _checkInternetStatus();
-    if (connected) await _fetchUsers();
-    setState(() => _isLoading = false);
-  }
-
   void _showToast(String message, {bool isError = false}) {
     Fluttertoast.showToast(
       msg: message,
-      backgroundColor: isError ? Colors.red : Colors.green,
+      backgroundColor: isError ? Colors.red : Color(0xff185794),
       textColor: Colors.white,
       gravity: ToastGravity.TOP,
-    );
-  }
-
-  void _showApproveDialog(String email) {
-    showDialog(
-      context: context,
-      builder: (context) {
-        return StatefulBuilder(builder: (context, setStateDialog) {
-          return AlertDialog(
-            content: const Text('Do you want to approve the request?', textAlign: TextAlign.center),
-            actions: [
-              TextButton(
-                onPressed: _isUpdating ? null : () => Navigator.pop(context),
-                child: const Text('Cancel'),
-              ),
-              ElevatedButton(
-                onPressed: _isUpdating || !_isConnected
-                    ? null
-                    : () async {
-                  setStateDialog(() => _isUpdating = true);
-                  try {
-                    widget.onStatusUpdate(email, 'Active');
-                    widget.onPageChange(0);
-                    await Future.delayed(const Duration(milliseconds: 300));
-                    await _fetchUsers();
-                    Navigator.pop(context);
-                    _showToast("Status updated to Approved");
-                  } catch (e) {
-                    _showToast("Failed to update status", isError: true);
-                  } finally {
-                    setState(() => _isUpdating = false);
-                  }
-                },
-                child: _isUpdating
-                    ? const SizedBox(
-                    height: 16, width: 16, child: CircularProgressIndicator(strokeWidth: 2))
-                    : const Text('Yes, Approve'),
-              ),
-            ],
-          );
-        });
-      },
-    );
-  }
-
-  void _showRejectDialog(String email) {
-    showDialog(
-      context: context,
-      builder: (context) {
-        return StatefulBuilder(builder: (context, setStateDialog) {
-          return AlertDialog(
-            content: const Text('Do you want to reject the request?', textAlign: TextAlign.center),
-            actions: [
-              TextButton(
-                onPressed: _isUpdating ? null : () => Navigator.pop(context),
-                child: const Text('Cancel'),
-              ),
-              ElevatedButton(
-                onPressed: _isUpdating || !_isConnected
-                    ? null
-                    : () async {
-                  setStateDialog(() => _isUpdating = true);
-                  try {
-                    widget.onStatusUpdate(email, 'Reject');
-                    widget.onPageChange(0);
-                    await Future.delayed(const Duration(milliseconds: 300));
-                    await _fetchUsers();
-                    Navigator.pop(context);
-                    _showToast("Status updated to Rejected");
-                  } catch (e) {
-                    _showToast("Failed to update status", isError: true);
-                  } finally {
-                    setState(() => _isUpdating = false);
-                  }
-                },
-                style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
-                child: _isUpdating
-                    ? const SizedBox(
-                    height: 16, width: 16, child: CircularProgressIndicator(strokeWidth: 2))
-                    : const Text('Yes, Reject'),
-              ),
-            ],
-          );
-        });
-      },
+      toastLength: Toast.LENGTH_SHORT,
     );
   }
 
@@ -402,76 +301,138 @@ class _UserListTabState extends State<UserListTab> {
   }
 
   Widget _buildPagination() {
-    if (_usersList.isEmpty || !_isConnected) return const SizedBox.shrink();
+    if (totalPages <= 1) return const SizedBox.shrink();
+
+    const int maxPagesToShow = 7; // ✅ Show up to 7 page buttons
+    final double buttonSize = 30; // ✅ Smaller button
+    final double fontSize = 14;   // ✅ Smaller font
+
+    int startPage = max(0, min(widget.currentPage - (maxPagesToShow ~/ 2), totalPages - maxPagesToShow));
+    int endPage = min(startPage + maxPagesToShow - 1, totalPages - 1);
 
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 12),
-      child: Wrap(
-        spacing: 10,
-        alignment: WrapAlignment.center,
-        children: List.generate(totalPages, (index) {
-          final bool isSelected = index == widget.currentPage;
-          return InkWell(
-            onTap: () => widget.onPageChange(index),
-            child: Container(
-              width: 28,
-              height: 28,
-              alignment: Alignment.center,
-              decoration: BoxDecoration(
-                color: isSelected ? const Color(0xff185794) : Colors.transparent,
-                borderRadius: BorderRadius.circular(6),
-              ),
-              child: Text(
-                '${index + 1}',
-                style: TextStyle(
-                  color: isSelected ? Colors.white : const Color(0xff185794),
-                  fontWeight: FontWeight.bold,
+      padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 16),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          // ← Previous button
+          if (widget.currentPage > 0)
+            _buildArrowButton(
+              isNext: false,
+              enabled: _isConnected,
+              onTap: () => widget.onPageChange(widget.currentPage - 1),
+              buttonSize: buttonSize,
+              fontSize: fontSize,
+            ),
+
+          // Page number buttons
+          ...List.generate(endPage - startPage + 1, (index) {
+            final int pageNumber = startPage + index;
+            final bool isSelected = pageNumber == widget.currentPage;
+
+            return InkWell(
+              onTap: _isConnected && !isSelected ? () => widget.onPageChange(pageNumber) : null,
+              borderRadius: BorderRadius.circular(6),
+              splashColor: Colors.grey.shade300,
+              child: Container(
+                width: buttonSize,
+                height: buttonSize,
+                margin: const EdgeInsets.symmetric(horizontal: 4),
+                alignment: Alignment.center,
+                decoration: isSelected
+                    ? BoxDecoration(
+                  color: const Color(0xff185794).withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(6),
+                )
+                    : null,
+                child: Text(
+                  '${pageNumber + 1}',
+                  style: TextStyle(
+                    color: _isConnected ? const Color(0xff185794) : Colors.grey,
+                    fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+                    fontSize: fontSize,
+                  ),
                 ),
               ),
+            );
+          }),
+
+          // → Next button
+          if (widget.currentPage < totalPages - 1)
+            _buildArrowButton(
+              isNext: true,
+              enabled: _isConnected,
+              onTap: () => widget.onPageChange(widget.currentPage + 1),
+              buttonSize: buttonSize,
+              fontSize: fontSize,
             ),
-          );
-        }),
+        ],
       ),
     );
   }
 
-  Widget _buildUserList() {
-    if (_isLoading) {
-      return const Center(
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              CircularProgressIndicator(),
-              SizedBox(height: 16),
-              Text('Loading users...', style: TextStyle(color: Colors.grey))
-            ],
-          )
-      );
-    }
+  Widget _buildArrowButton({
+    required bool isNext,
+    required bool enabled,
+    required VoidCallback onTap,
+    required double buttonSize,
+    required double fontSize,
+  }) {
+    return InkWell(
+      onTap: enabled ? onTap : null,
+      borderRadius: BorderRadius.circular(6),
+      splashColor: Colors.grey.shade300,
+      child: Container(
+        width: buttonSize,
+        height: buttonSize,
+        alignment: Alignment.center,
+        child: Icon(
+          isNext ? Icons.chevron_right : Icons.chevron_left,
+          color: enabled ? const Color(0xff185794) : Colors.grey,
+          size: fontSize + 4,
+        ),
+      ),
+    );
+  }
 
+  Widget _buildEmptyState() {
+    return Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Lottie.asset("assets/animations/no_data_found.json", width: 180),
+          const SizedBox(height: 12),
+          Text('No ${selectedStatus.toLowerCase()} users found',
+              style: const TextStyle(color: Colors.grey)),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildLoadingIndicator() {
+    return const Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            CircularProgressIndicator(color: Color(0xff185794)),
+            SizedBox(height: 16),
+            Text('Loading users...', style: TextStyle(color: Colors.grey))
+          ],
+        )
+    );
+  }
+
+  Widget _buildUserList() {
     if (!_isConnected) {
       return _buildNoInternetWidget();
     }
 
-    if (_usersList.isEmpty && _isConnected) {
-      return Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Lottie.asset("assets/animations/no_data_found.json", width: 200),
-            const SizedBox(height: 12),
-            Text('No ${selectedStatus.toLowerCase()} users found', style: const TextStyle(color: Colors.grey)),
-            const SizedBox(height: 24),
-            IconButton(
-              onPressed: _fetchUsers,
-              icon: const Icon(Icons.refresh),
-              style: ElevatedButton.styleFrom(
-                foregroundColor: Color(0xff185794),
-              ),
-            ),
-          ],
-        ),
-      );
+    if (_isLoading) {
+      return _buildLoadingIndicator();
+    }
+
+    if (_usersList.isEmpty) {
+      return _buildEmptyState();
     }
 
     return Column(
@@ -484,6 +445,7 @@ class _UserListTabState extends State<UserListTab> {
         Expanded(
           child: RefreshIndicator(
             onRefresh: _fetchUsers,
+            color: const Color(0xff185794),
             child: ListView.separated(
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
               itemCount: _usersList.length,
@@ -491,17 +453,64 @@ class _UserListTabState extends State<UserListTab> {
               itemBuilder: (context, index) {
                 final item = _usersList[index];
                 return Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
                   decoration: BoxDecoration(
                     color: Colors.white,
-                    borderRadius: BorderRadius.circular(16),
-                    boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 6)],
+                    borderRadius: BorderRadius.circular(10),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withOpacity(0.05),
+                        blurRadius: 4,
+                        offset: const Offset(0, 2),
+                      ),
+                    ],
                   ),
                   child: Row(
                     children: [
-                      SizedBox(width: 30, child: Text('${(widget.currentPage * 10) + index + 1}.')),
-                      Expanded(child: Text(item['name'] ?? 'User')),
-                      Expanded(flex: 2, child: Text(item['organisationName'] ?? 'Organization')),
+                      // Serial number
+                      Container(
+                        width: 30,
+                        child: Text(
+                          '${(widget.currentPage * 10) + index + 1}.',
+                          style: const TextStyle(
+                            fontWeight: FontWeight.w500,
+                            color: Colors.black54,
+                          ),
+                        ),
+                      ),
+
+                      // User and organization information
+                      Expanded(
+                        flex: 4,
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            // User name
+                            Text(
+                              item['name'] ?? 'User',
+                              style: const TextStyle(
+                                fontSize: 14,
+                                fontWeight: FontWeight.w500,
+                              ),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                            const SizedBox(height: 4),
+                            // Organization name
+                            Text(
+                              item['organisationName'] ?? 'Organization',
+                              style: const TextStyle(
+                                fontSize: 12,
+                                color: Colors.black54,
+                              ),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ],
+                        ),
+                      ),
+
+                      // Status controls
                       _buildStatusControls(item['status'], item['email']),
                     ],
                   ),
@@ -520,8 +529,8 @@ class _UserListTabState extends State<UserListTab> {
     final logoSize = screenWidth < 500 ? 60.0 : 80.0;
 
     return Container(
-      decoration: BoxDecoration(
-        color: Colors.white
+      decoration: const BoxDecoration(
+          color: Colors.white
       ),
       child: Column(
         children: [
@@ -565,7 +574,26 @@ class _UserListTabState extends State<UserListTab> {
           ),
           const SizedBox(height: 10),
 
-          // User List
+          // User List with connectivity status indicator
+          if (!_isConnected)
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.symmetric(vertical: 6),
+              color: Colors.orange.shade100,
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  const Icon(Icons.wifi_off, size: 16, color: Colors.orange),
+                  const SizedBox(width: 8),
+                  const Text(
+                    'Waiting for connection...',
+                    style: TextStyle(color: Colors.orange, fontSize: 12),
+                  ),
+                ],
+              ),
+            ),
+
+          // Main content
           Expanded(child: _buildUserList()),
 
           // Pagination
@@ -573,5 +601,214 @@ class _UserListTabState extends State<UserListTab> {
         ],
       ),
     );
+  }
+
+  void _showApproveDialog(String email) {
+    showDialog(
+      context: context,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          backgroundColor: Colors.white,
+          shape: RoundedRectangleBorder(
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(10)),
+            side: BorderSide(color: Colors.grey.shade300),
+          ),
+          content: const Text(
+            'Do you want to approve the request?',
+            textAlign: TextAlign.center,
+          ),
+          actions: [
+            const SizedBox(height: 20),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                SizedBox(
+                  height: 30,
+                  child: ElevatedButton(
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.white,
+                      foregroundColor: Colors.black,
+                      shape: const RoundedRectangleBorder(
+                          borderRadius: BorderRadius.all(Radius.circular(10))),
+                      side: const BorderSide(color: Color(0xff262A88)),
+                    ),
+                    child: const Padding(
+                      padding: EdgeInsets.all(2.0),
+                      child: Text('Cancel'),
+                    ),
+                    onPressed: () {
+                      Navigator.of(context).pop();
+                    },
+                  ),
+                ),
+                const Expanded(
+                    child: SizedBox(width: 80)),
+                SizedBox(
+                  height: 30,
+                  child: ElevatedButton(
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Color(0xff185794),
+                      foregroundColor: Colors.white,
+                      shape: const RoundedRectangleBorder(
+                          borderRadius: BorderRadius.all(Radius.circular(10))),
+                    ),
+                    child: const Padding(
+                      padding: EdgeInsets.all(2.0),
+                      child: Text('Yes, Approve'),
+                    ),
+                    onPressed: () {
+                      Navigator.of(context).pop();
+                      _updateStatusByEmail(email, 'Active');
+                    },
+                  ),
+                ),
+              ],
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  void _showRejectDialog(String email) {
+    showDialog(
+      context: context,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          backgroundColor: Colors.white,
+          shape: RoundedRectangleBorder(
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(10)),
+            side: BorderSide(color: Colors.grey.shade300),
+          ),
+          content: const Text(
+            'Do you want to reject the request?',
+            textAlign: TextAlign.center,
+          ),
+          actions: [
+            const SizedBox(height: 20),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                SizedBox(
+                  height: 30,
+                  child: ElevatedButton(
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.white,
+                      foregroundColor: Colors.black,
+                      shape: const RoundedRectangleBorder(
+                          borderRadius: BorderRadius.all(Radius.circular(10))),
+                      side: const BorderSide(color: Color(0xff262A88)),
+                    ),
+                    child: const Text('Cancel'),
+                    onPressed: () {
+                      Navigator.of(context).pop();
+                    },
+                  ),
+                ),
+                const Expanded(
+                    child: SizedBox(width: 80)),
+                SizedBox(
+                  height: 30,
+                  child: ElevatedButton(
+                    style: ElevatedButton.styleFrom(
+                        backgroundColor: Color(0xff185794),
+                        foregroundColor: Colors.white,
+                        shape: const RoundedRectangleBorder(
+                            borderRadius:
+                            BorderRadius.all(Radius.circular(10)))),
+                    child: const Text('Yes, Reject'),
+                    onPressed: () {
+                      Navigator.of(context).pop();
+                      _updateStatusByEmail(email, 'Reject');
+                    },
+                  ),
+                ),
+              ],
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  Future<void> _updateStatusByEmail(String email, String newStatus) async {
+    if (!_isConnected) {
+      _showToast("No internet connection", isError: true);
+      return;
+    }
+
+    // Show loading indicator
+    setState(() {
+      _isUpdating = true;
+    });
+
+    final url = Uri.parse("${_apiService.baseUrl}/update-status");
+    final requestBody = {
+      "email": email,
+      "status": newStatus, // "Active" or "Reject"
+    };
+
+    try {
+      final response = await http.put(
+        url,
+        headers: {"Content-Type": "application/json"},
+        body: jsonEncode(requestBody),
+      ).timeout(const Duration(seconds: 10));
+
+      if (response.statusCode == 200) {
+        final responseData = jsonDecode(response.body);
+        if (responseData['success'] == true) {
+          _showToast("Status updated successfully", isError: false);
+
+          // Call the parent widget's callback only once
+          widget.onStatusUpdate(email, newStatus);
+
+          // Determine if we need to switch tabs based on the new status
+          if (newStatus == 'Active' && selectedStatus != 'Approved') {
+            // User was approved, switch to Approved tab
+            setState(() {
+              selectedStatus = 'Approved';
+              widget.onPageChange(0); // Reset to first page of new tab
+            });
+            // The fetch will happen via didUpdateWidget when the page changes
+          } else if (newStatus == 'Reject' && selectedStatus != 'Rejected') {
+            // User was rejected, switch to Rejected tab
+            setState(() {
+              selectedStatus = 'Rejected';
+              widget.onPageChange(0); // Reset to first page of new tab
+            });
+            // The fetch will happen via didUpdateWidget when the page changes
+          } else {
+            // If staying on same tab, we need to refresh the data
+            await _fetchUsers();
+          }
+        } else {
+          _showToast("Status update failed", isError: true);
+        }
+      } else {
+        _showToast("Status update failed (${response.statusCode})", isError: true);
+      }
+    } catch (e) {
+      if (e is SocketException || e is TimeoutException) {
+        setState(() => _isConnected = false);
+        _showToast("No internet connection", isError: true);
+      } else {
+        _showToast("Error updating status", isError: true);
+      }
+    } finally {
+      // Hide loading indicator
+      setState(() {
+        _isUpdating = false;
+      });
+    }
+  }
+
+  @override
+  void didUpdateWidget(UserListTab oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    // If the page has changed, fetch new users
+    if (oldWidget.currentPage != widget.currentPage) {
+      _fetchUsers();
+    }
   }
 }

@@ -24,6 +24,7 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen> {
   bool _isLoadingBrandPrescriptions = false;
   bool _isLoadingPackSizes = false;
   bool _showAllDrugInteractions = false;
+  bool _isEnquiryButtonDisabled = false; // Track if the enquiry button is disabled
 
   // For tracking highlighted rows
   int? _highlightedPackSizeIndex;
@@ -74,19 +75,83 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen> {
       toastLength: Toast.LENGTH_LONG,
       gravity: ToastGravity.TOP,
       timeInSecForIosWeb: 2,
-      backgroundColor: isError ? Colors.red : Colors.green,
+      backgroundColor: isError ? Colors.red : Color(0xff185794),
       textColor: Colors.white,
       fontSize: 16.0,
     );
   }
 
+  // Show confirmation dialog for enquiry
+  Future<void> _showEnquiryConfirmation() async {
+    return showDialog<void>(
+      context: context,
+      barrierDismissible: false, // User must tap button to close dialog
+      builder: (BuildContext context) {
+        return AlertDialog(
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16),
+          ),
+          title: Text(
+            'Confirm Enquiry',
+            style: TextStyle(
+              color: Color(0xff185794),
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+          content: SingleChildScrollView(
+            child: ListBody(
+              children: <Widget>[
+                Text(
+                  'Are you sure you want to submit an enquiry for ${widget.getProductsContent.medicineName}?',
+                  style: TextStyle(fontSize: 16),
+                ),
+              ],
+            ),
+          ),
+          actions: <Widget>[
+            TextButton(
+              child: Text(
+                'Cancel',
+                style: TextStyle(color: Colors.grey[700]),
+              ),
+              onPressed: () {
+                Navigator.of(context).pop();
+              },
+            ),
+            Container(
+              decoration: BoxDecoration(
+                color: Color(0xff185794),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: TextButton(
+                child: Text(
+                  'Confirm',
+                  style: TextStyle(color: Colors.white),
+                ),
+                onPressed: () {
+                  Navigator.of(context).pop();
+                  _submitEnquiry();
+                },
+              ),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
   Future<void> _submitEnquiry() async {
+    // Disable the enquiry button
+    setState(() {
+      _isEnquiryButtonDisabled = true;
+    });
+
     final empId = await SharedPreferenceHelper.getUserSno(); // Get logged-in user sno
     final productId = widget.getProductsContent.serialNo;   // Treat serialNo as productId
     print("empID/viewMore\t${empId}");
     print("productID/viewMore\t${productId}");
     if (empId == null || productId == null) {
-      _showToast("Something went wrong!",isError: true);
+      _showToast("Something went wrong!", isError: true);
       return;
     }
 
@@ -95,15 +160,15 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen> {
     try {
       final response = await ApiService().submitEnquiry(request);
       if (response != null) {
-        _showToast("${response.responseMessage}",isError: false);
+        _showToast("Enquiry submitted successfully!", isError: false);
+        // _showToast("${response.responseMessage}", isError: false);
       } else {
-        _showToast("Something went wrong!",isError: true);
+        _showToast("Something went wrong!", isError: true);
       }
     } catch (e) {
-      _showToast("${e.toString()}",isError: true);
+      _showToast("${e.toString()}", isError: true);
     }
   }
-
 
   @override
   Widget build(BuildContext context) {
@@ -225,11 +290,13 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen> {
               textAlign: TextAlign.center,
             ),
           ),
-          // Improved enquiry button with text
+          // Improved enquiry button with text and disabled state
           Container(
             height: 40,
             decoration: BoxDecoration(
-              color: const Color(0xff185794),
+              color: _isEnquiryButtonDisabled
+                  ? Colors.grey
+                  : const Color(0xff185794),
               borderRadius: BorderRadius.circular(20),
               boxShadow: [
                 BoxShadow(
@@ -243,14 +310,16 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen> {
               color: Colors.transparent,
               child: InkWell(
                 borderRadius: BorderRadius.circular(20),
-                onTap: () {
-                  _submitEnquiry();
+                onTap: _isEnquiryButtonDisabled
+                    ? null
+                    : () {
+                  _showEnquiryConfirmation();
                 },
                 child: Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
                   child: Row(
                     children: [
-                      const Text(
+                      Text(
                         'Enquiry',
                         style: TextStyle(
                           color: Colors.white,
@@ -444,8 +513,9 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen> {
     };
 
     final filteredFields = fields.entries.where((entry) {
+      final key = entry.key;
       final val = entry.value?.trim().toUpperCase();
-      return val != null && val.isNotEmpty && val != "-NA";
+      return key != "Reference Link" && val != null && val.isNotEmpty && val != "- NA";
     });
 
     return Card(
@@ -469,39 +539,62 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // GENERIC & INDICATION
-                Row(
+                Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Container(
-                      width: 50,
-                      height: 50,
-                      decoration: BoxDecoration(
-                        color: const Color(0xff185794).withOpacity(0.1),
-                        borderRadius: BorderRadius.circular(10),
-                      ),
-                      child: const Icon(
-                        Icons.medication_rounded,
-                        color: Color(0xff185794),
-                        size: 30,
-                      ),
-                    ),
-                    const SizedBox(width: 16),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          const Text(
-                            "Generic Name",
-                            style: TextStyle(
-                              fontSize: 14,
-                              fontWeight: FontWeight.bold,
-                              color: Color(0xff185794),
-                            ),
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Container(
+                          width: 50,
+                          height: 50,
+                          decoration: BoxDecoration(
+                            color: const Color(0xff185794).withOpacity(0.1),
+                            borderRadius: BorderRadius.circular(10),
                           ),
-                          const SizedBox(height: 4),
+                          child: const Icon(
+                            Icons.medication_rounded,
+                            color: Color(0xff185794),
+                            size: 30,
+                          ),
+                        ),
+                        const SizedBox(width: 16),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                "Generic Name",
+                                style: const TextStyle(
+                                  fontSize: 14,
+                                  fontWeight: FontWeight.bold,
+                                  color: Color(0xff185794),
+                                ),
+                              ),
+                              const SizedBox(height: 4),
+                              Text(
+                                p.genericName ?? '-',
+                                style: TextStyle(
+                                  fontSize: 13,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 12),
+                    const Divider(),
+                    const SizedBox(height: 8),
+                    if (p.indication != null && p.indication!.isNotEmpty)
+                      _buildInfoCard("Reference Link", p.referenceLink),
+                    if (p.manufacturedBy != null && p.manufacturedBy!.isNotEmpty)
+                      Row(
+                        children: [
+                          const Icon(Icons.business, size: 16, color: Color(0xff185794)),
+                          const SizedBox(width: 6),
                           Text(
-                            p.genericName ?? '-',
+                            p.manufacturedBy!,
                             style: TextStyle(
                               fontSize: 13,
                               color: Colors.grey[800],
@@ -509,100 +602,77 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen> {
                           ),
                         ],
                       ),
+                    const SizedBox(height: 16),
+                    Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: const Color(0xffffecb5),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: const [
+                          // Header stays at default bold size (inherited from Theme or ~14–16)
+                          Text(
+                            "Disclaimer",
+                            style: TextStyle(
+                              fontWeight: FontWeight.bold,
+                              color: Color(0xff664d03),
+                            ),
+                          ),
+                          SizedBox(height: 4),
+                          // Content lines are smaller
+                          Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: const [
+                              Row(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text("• ", style: TextStyle(color: Color(0xff664d03), fontSize: 12)),
+                                  Expanded(
+                                    child: Text(
+                                      "Product data taken from web sources",
+                                      style: TextStyle(color: Color(0xff664d03), fontSize: 12),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              SizedBox(height: 4),
+                              Row(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text("• ", style: TextStyle(color: Color(0xff664d03), fontSize: 12)),
+                                  Expanded(
+                                    child: Text(
+                                      "At most care is taken for accuracy",
+                                      style: TextStyle(color: Color(0xff664d03), fontSize: 12),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              SizedBox(height: 4),
+                              Row(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text("• ", style: TextStyle(color: Color(0xff664d03), fontSize: 12)),
+                                  Expanded(
+                                    child: Text(
+                                      "PFIPL is not responsible for any source errors",
+                                      style: TextStyle(color: Color(0xff664d03), fontSize: 12),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ],
+                          )
+
+                        ],
+                      ),
                     ),
+                    const SizedBox(height: 16),
                   ],
                 ),
-
-                const SizedBox(height: 12),
-                const Divider(),
-                const SizedBox(height: 8),
-
-                // Indication block
-                if (p.indication != null && p.indication!.isNotEmpty) ...[
-                  const Text(
-                    "Indication",
-                    style: TextStyle(
-                      fontWeight: FontWeight.bold,
-                      fontSize: 14,
-                      color: Color(0xff185794),
-                    ),
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    p.indication!,
-                    style: TextStyle(
-                      fontSize: 13,
-                      color: Colors.grey[800],
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-
-                  // —— Your DISCLAIMER ——
-                  // … inside your _buildProductDetails Column, after the Indication …
-                  Container(
-                    width: double.infinity,
-                    padding: const EdgeInsets.all(12),
-                    decoration: BoxDecoration(
-                      color: const Color(0xffffecb5),
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: const [
-                        // Header stays at default bold size (inherited from Theme or ~14–16)
-                        Text(
-                          "Disclaimer",
-                          style: TextStyle(
-                            fontWeight: FontWeight.bold,
-                            color: Color(0xff664d03),
-                          ),
-                        ),
-                        SizedBox(height: 4),
-                        // Content lines are smaller
-                        Text(
-                          "Product data taken from web sources",
-                          style: TextStyle(
-                            color: Color(0xff664d03),
-                            fontSize: 12,
-                          ),
-                        ),
-                        Text(
-                          "At most care is taken for accuracy",
-                          style: TextStyle(
-                            color: Color(0xff664d03),
-                            fontSize: 12,
-                          ),
-                        ),
-                        Text(
-                          "PFIPL is not responsible for any source errors",
-                          style: TextStyle(
-                            color: Color(0xff664d03),
-                            fontSize: 12,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-
-                  const SizedBox(height: 16),
-                ],
-
-                // Manufactured by
-                if (p.manufacturedBy != null && p.manufacturedBy!.isNotEmpty)
-                  Row(
-                    children: [
-                      const Icon(Icons.business, size: 16, color: Color(0xff185794)),
-                      const SizedBox(width: 6),
-                      Text(
-                        p.manufacturedBy!,
-                        style: TextStyle(fontSize: 13, color: Colors.grey[800]),
-                      ),
-                    ],
-                  ),
-
-                const SizedBox(height: 16),
-
-                // rest of your info cards...
                 ...filteredFields.map((e) => _buildInfoCard(e.key, e.value)).toList(),
               ],
             ),
@@ -651,36 +721,60 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen> {
 
   Widget _buildPackSizes(GetProductsContent product) {
     final items = product.packSizes ?? [];
-    if (items.isEmpty) return _styledAccordionItem("Pack Sizes", "No data available.");
 
-    return SingleChildScrollView(
-      scrollDirection: Axis.horizontal,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          // Header
-          Container(
-            width: 600,
-            padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
-            decoration: BoxDecoration(
-              color: const Color(0xff185794),
-              borderRadius: BorderRadius.circular(8),
+    if (items.isEmpty) {
+      return Padding(
+        padding: const EdgeInsets.symmetric(vertical: 8.0),
+        child: _styledAccordionItem("Pack Sizes", "No data available."),
+      );
+    }
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 8.0),
+      child: Container(
+        width: double.infinity,
+        decoration: BoxDecoration(
+          border: Border.all(color: Colors.grey.shade300),
+          borderRadius: BorderRadius.circular(8),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Table Header
+            Container(
+              padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
+              decoration: BoxDecoration(
+                color: const Color(0xff185794),
+                borderRadius: const BorderRadius.only(
+                  topLeft: Radius.circular(8),
+                  topRight: Radius.circular(8),
+                ),
+              ),
+              child: Row(
+                children: const [
+                  Expanded(
+                    flex: 3,
+                    child: Text("Strength",
+                        style: TextStyle(fontWeight: FontWeight.bold, color: Colors.white)),
+                  ),
+                  Expanded(
+                    flex: 3,
+                    child: Text("Pack Size",
+                        style: TextStyle(fontWeight: FontWeight.bold, color: Colors.white)),
+                  ),
+                  Expanded(
+                    flex: 4,
+                    child: Text("Storage",
+                        style: TextStyle(fontWeight: FontWeight.bold, color: Colors.white)),
+                  ),
+                ],
+              ),
             ),
-            child: const Row(
-              children: [
-                SizedBox(width: 180, child: Text("Strength", style: TextStyle(fontWeight: FontWeight.bold, color: Colors.white))),
-                SizedBox(width: 180, child: Text("Pack Size", style: TextStyle(fontWeight: FontWeight.bold, color: Colors.white))),
-                SizedBox(width: 200, child: Text("Storage", style: TextStyle(fontWeight: FontWeight.bold, color: Colors.white))),
-              ],
-            ),
-          ),
-          const SizedBox(height: 8),
-          Container(
-            width: 600,
-            height: items.length > 4 ? 200 : null,
-            child: ListView.builder(
-              shrinkWrap: items.length <= 4,
-              physics: items.length <= 4 ? NeverScrollableScrollPhysics() : ClampingScrollPhysics(),
+
+            // Table Rows
+            ListView.builder(
+              shrinkWrap: true,
+              physics: const NeverScrollableScrollPhysics(),
               itemCount: items.length,
               itemBuilder: (context, index) {
                 final pack = items[index];
@@ -690,7 +784,8 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen> {
                     : (index % 2 == 0 ? Colors.white : const Color(0xFFF5F9FF));
 
                 return GestureDetector(
-                  onTap: () => setState(() => _highlightedPackSizeIndex = isHighlighted ? null : index),
+                  onTap: () => setState(() =>
+                  _highlightedPackSizeIndex = isHighlighted ? null : index),
                   child: Container(
                     padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
                     decoration: BoxDecoration(
@@ -699,17 +794,32 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen> {
                     ),
                     child: Row(
                       children: [
-                        SizedBox(width: 180, child: Text(pack.strength ?? '-', style: TextStyle(fontWeight: isHighlighted ? FontWeight.bold : FontWeight.normal))),
-                        SizedBox(width: 180, child: Text(pack.packSize ?? '-', style: TextStyle(fontWeight: isHighlighted ? FontWeight.bold : FontWeight.normal))),
-                        SizedBox(width: 200, child: Text(pack.storage ?? '-', style: TextStyle(fontWeight: isHighlighted ? FontWeight.bold : FontWeight.normal))),
+                        Expanded(
+                          flex: 3,
+                          child: Text(pack.strength ?? '-',
+                              style: TextStyle(
+                                  fontWeight: isHighlighted ? FontWeight.bold : FontWeight.normal)),
+                        ),
+                        Expanded(
+                          flex: 3,
+                          child: Text(pack.packSize ?? '-',
+                              style: TextStyle(
+                                  fontWeight: isHighlighted ? FontWeight.bold : FontWeight.normal)),
+                        ),
+                        Expanded(
+                          flex: 4,
+                          child: Text(pack.storage ?? '-',
+                              style: TextStyle(
+                                  fontWeight: isHighlighted ? FontWeight.bold : FontWeight.normal)),
+                        ),
                       ],
                     ),
                   ),
                 );
               },
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
@@ -1026,6 +1136,5 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen> {
       },
     );
   }
-
 
 }

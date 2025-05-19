@@ -161,7 +161,7 @@ class _AdminApprovalScreenState extends State<AdminApprovalScreen> {
   Widget build(BuildContext context) {
     if (_loading) {
       return const Scaffold(
-        body: Center(child: CircularProgressIndicator()),
+        body: Center(child: CircularProgressIndicator(color: Color(0xff185794),)),
       );
     }
 
@@ -174,7 +174,7 @@ class _AdminApprovalScreenState extends State<AdminApprovalScreen> {
         title: const Text("Account Approval"),
         actions: [
           IconButton(
-            icon: const Icon(Icons.logout),
+            icon: const Icon(Icons.logout,color: Color(0xff185794)),
             onPressed: _showLogoutDialog,
           )
         ],
@@ -220,7 +220,7 @@ class _AdminApprovalScreenState extends State<AdminApprovalScreen> {
                     ? const SizedBox(
                   height: 22,
                   width: 22,
-                  child: CircularProgressIndicator(strokeWidth: 2),
+                  child: CircularProgressIndicator(color: Color(0xff185794),strokeWidth: 2),
                 )
                     : const Text("Check Status"),
               ),
