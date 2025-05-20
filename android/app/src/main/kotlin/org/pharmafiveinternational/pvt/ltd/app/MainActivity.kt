@@ -1,4 +1,4 @@
-package org.pharmafiveinternational.pvt.ltd
+package org.pharmafiveinternational.pvt.ltd.app
 
 import io.flutter.embedding.android.FlutterActivity
 

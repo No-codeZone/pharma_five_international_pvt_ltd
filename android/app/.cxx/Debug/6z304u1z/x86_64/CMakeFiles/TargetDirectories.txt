@@ -1,0 +1,2 @@
+/Users/gaurawkumar/Downloads/StarterProject/pharma_five_international_pvt_ltd/android/app/.cxx/Debug/6z304u1z/x86_64/CMakeFiles/edit_cache.dir
+/Users/gaurawkumar/Downloads/StarterProject/pharma_five_international_pvt_ltd/android/app/.cxx/Debug/6z304u1z/x86_64/CMakeFiles/rebuild_cache.dir
