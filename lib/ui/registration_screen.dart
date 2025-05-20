@@ -694,7 +694,7 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
     hasRealInternetConnection().then((connected) {
       if (!connected) {
         _wasDisconnected = true;
-        _showToast("No internet connection", true);
+        // _showToast("No internet connection", true);
       }
     });
 
@@ -898,10 +898,10 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
     final connected = await hasRealInternetConnection();
     if (!connected && !_wasDisconnected) {
       _wasDisconnected = true;
-      _showToast("Internet disconnected", true);
+      // _showToast("Internet disconnected", true);
     } else if (connected && _wasDisconnected) {
       _wasDisconnected = false;
-      _showToast("Internet connected", false);
+      // _showToast("Internet connected", false);
     }
   }
 

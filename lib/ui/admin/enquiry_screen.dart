@@ -1,12 +1,16 @@
 import 'dart:async';
+import 'dart:io';
 import 'dart:math';
+import 'package:http/http.dart' as http;
+import 'package:intl/intl.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:flutter/material.dart';
 import 'package:fluttertoast/fluttertoast.dart';
 import 'package:lottie/lottie.dart';
-import 'package:url_launcher/url_launcher.dart';
 import '../../helper/communication_handler.dart';
+import '../../helper/file_downloader_helper.dart';
 import '../../service/api_service.dart';
+
 
 enum EnquiryStatus { newEnquiry, viewed }
 class EnquiryItem {
@@ -39,17 +43,14 @@ class EnquiryTab extends StatefulWidget {
   @override
   _EnquiryTabState createState() => _EnquiryTabState();
 }
-
 class _EnquiryTabState extends State<EnquiryTab> {
   bool _isLoading = false;
   int _totalPages = 1;
   List<EnquiryItem> _items = [];
   final Connectivity _connectivity = Connectivity();
   late StreamSubscription<List<ConnectivityResult>> _connectionSubscription;
-
   bool _isConnected = true;
   bool _lastConnectionStatus = true;
-
 
   @override
   void initState() {
@@ -71,7 +72,8 @@ class _EnquiryTabState extends State<EnquiryTab> {
       _loadPage(widget.currentPage);
     }
 
-    _connectionSubscription = _connectivity.onConnectivityChanged.listen((results) async {
+    _connectionSubscription =
+        _connectivity.onConnectivityChanged.listen((results) async {
       final connected = results.contains(ConnectivityResult.mobile) ||
           results.contains(ConnectivityResult.wifi) ||
           results.contains(ConnectivityResult.ethernet);
@@ -83,17 +85,18 @@ class _EnquiryTabState extends State<EnquiryTab> {
         });
 
         if (connected) {
-          Fluttertoast.showToast(
-            msg: "Internet connection restored",
-            backgroundColor: const Color(0xff185794),
-          );
-          await Future.delayed(const Duration(milliseconds: 500)); // allow stabilization
+          // Fluttertoast.showToast(
+          //   msg: "Internet connection restored",
+          //   backgroundColor: const Color(0xff185794),
+          // );
+          await Future.delayed(
+              const Duration(milliseconds: 500)); // allow stabilization
           _loadPage(widget.currentPage);
         } else {
-          Fluttertoast.showToast(
-            msg: "Internet connection lost",
-            backgroundColor: Colors.red,
-          );
+          // Fluttertoast.showToast(
+          //   msg: "Internet connection lost",
+          //   backgroundColor: Colors.red,
+          // );
         }
       }
     });
@@ -122,15 +125,15 @@ class _EnquiryTabState extends State<EnquiryTab> {
       );
 
       final fetched = resp.data
-          ?.map((d) => EnquiryItem(
-        id: d.id ?? 0,
-        productName: d.medicineName ?? '—',
-        userName: d.empName ?? '—',
-        status: d.status == 1
-            ? EnquiryStatus.newEnquiry
-            : EnquiryStatus.viewed,
-      ))
-          .toList() ??
+              ?.map((d) => EnquiryItem(
+                    id: d.id ?? 0,
+                    productName: d.medicineName ?? '—',
+                    userName: d.empName ?? '—',
+                    status: d.status == 1
+                        ? EnquiryStatus.newEnquiry
+                        : EnquiryStatus.viewed,
+                  ))
+              .toList() ??
           [];
 
       final totalCount = resp.totalCount ?? fetched.length;
@@ -148,105 +151,144 @@ class _EnquiryTabState extends State<EnquiryTab> {
   }
 
   Future<void> _refresh() => _loadPage(widget.currentPage);
-
   // Handle tap on phone number - direct without using url_launcher
   void _handlePhoneNumberTap(String? phoneNumber) {
     CommunicationHandler.makePhoneCall(context, phoneNumber);
   }
-
   // Handle tap on email - direct without using url_launcher
   void _handleEmailTap(String? email) {
     CommunicationHandler.sendEmail(context, email);
   }
 
-  // Widget for interactive links
-  // Widget for interactive links - enhanced with better accessibility
+  String formatDateTime(String? dateTimeStr) {
+    if (dateTimeStr == null || dateTimeStr.isEmpty) return "N/A";
+
+    try {
+      final parsed = DateTime.parse(dateTimeStr);
+      return DateFormat('dd/MM/yyyy hh:mm a').format(parsed);
+    } catch (e) {
+      return "Invalid Date";
+    }
+  }
+
+  Future<void> _downloadEnquiryExcelFile() async {
+    const downloadUrl = "http://13.49.224.44:8080/api/enquiry/download";
+
+    // ✅ Step 1: Check Internet
+    try {
+      final connectivityResult = await Connectivity().checkConnectivity();
+      final isConnected = connectivityResult == ConnectivityResult.mobile ||
+          connectivityResult == ConnectivityResult.wifi ||
+          connectivityResult == ConnectivityResult.ethernet;
+
+      if (!isConnected) {
+        Fluttertoast.showToast(
+          msg: "No internet connection",
+          backgroundColor: Colors.red,
+          gravity: ToastGravity.TOP
+        );
+        return;
+      }
+
+      // ✅ Step 2: Check Storage Permission
+      final hasPermission = await FileDownloadHelper.requestStoragePermission(context);
+      if (!hasPermission) return;
+
+      // ✅ Step 3: Get Download Directory
+      final directory = await FileDownloadHelper.getDownloadDirectory();
+      if (directory == null) {
+        Fluttertoast.showToast(
+          msg: "Unable to access storage",
+          backgroundColor: Colors.red,
+        );
+        return;
+      }
+
+      // ✅ Step 4: Download File
+      final filename = "enquiry_list_${DateTime.now().millisecondsSinceEpoch}.xlsx";
+      final downloadPath = "${directory.path}/$filename";
+      final response = await http.get(Uri.parse(downloadUrl));
+
+      if (response.statusCode == 200) {
+        final file = File(downloadPath);
+        await file.writeAsBytes(response.bodyBytes);
+        await FileDownloadHelper.showFileDownloadSnackBar(context, downloadPath, Platform.isIOS);
+      } else {
+        Fluttertoast.showToast(
+          msg: "Failed to download file: Status ${response.statusCode}",
+          backgroundColor: Colors.red,
+        );
+      }
+    } catch (e) {
+      debugPrint("Enquiry download error: $e");
+      Fluttertoast.showToast(
+        msg: "Download failed: $e",
+        backgroundColor: Colors.red,
+      );
+    }
+  }
+
+
   Widget _buildInteractiveItem({
     required String label,
     required String? value,
     required IconData icon,
-    VoidCallback? onTap,
     bool isInteractive = true,
+    VoidCallback? onTap,
   }) {
-    // Early return if empty value to avoid creating tappable areas unnecessarily
-    final bool hasValue = value != null && value.isNotEmpty && value != "-";
-    final bool isTappable = isInteractive && hasValue;
+    final displayValue = (value == null || value.trim().isEmpty || value == "-") ? "N/A" : value;
 
     return Padding(
-      padding: const EdgeInsets.only(bottom: 16.0),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          SizedBox(
-            width: 110,
-            child: Text(
-              "$label:",
-              style: const TextStyle(
-                fontWeight: FontWeight.w600,
-                fontSize: 13.5,
-                color: Color(0xff185794),
-              ),
-            ),
-          ),
-          Expanded(
-            child: isTappable
-                ? InkWell(
-              onTap: onTap,
-              borderRadius: BorderRadius.circular(4),
-              // Add semantic label for accessibility
-              child: Semantics(
-                label: "$label: $value - Tap to $label",
-                button: true,
-                enabled: true,
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 8.0),
-                  child: Row(
-                    children: [
-                      Icon(
-                        icon,
-                        size: 16,
+      padding: const EdgeInsets.symmetric(vertical: 6),
+      child: InkWell(
+        onTap: isInteractive ? onTap : null,
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Icon(icon, size: 20, color: Color(0xff185794)),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  SizedBox(
+                    width: 110, // fixed label width for alignment
+                    child: Text(
+                      "$label:",
+                      style: const TextStyle(
+                        fontWeight: FontWeight.w600,
+                        fontSize: 14,
                         color: Color(0xff185794),
                       ),
-                      SizedBox(width: 8),
-                      Expanded(
-                        child: Text(
-                          value!,
-                          style: TextStyle(
-                            fontSize: 13.5,
-                            color: Color(0xff185794),
-                            decoration: TextDecoration.underline,
-                            height: 1.3,
-                          ),
-                        ),
-                      ),
-                    ],
+                    ),
                   ),
-                ),
-              ),
-            )
-                : Padding(
-              padding: const EdgeInsets.symmetric(vertical: 8.0),
-              child: Text(
-                value ?? "-",
-                style: const TextStyle(
-                  fontSize: 13.5,
-                  color: Colors.black87,
-                  height: 1.3,
-                ),
+                  Expanded(
+                    child: Text(
+                      displayValue!,
+                      style: TextStyle(
+                        fontSize: 14,
+                        color: isInteractive ? Colors.blue : Colors.black87,
+                        decoration: isInteractive
+                            ? TextDecoration.underline
+                            : TextDecoration.none,
+                      ),
+                    ),
+                  ),
+                ],
               ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
-
   // Styled viewEnquiry function based on logout dialog styling
   Future<void> _viewEnquiry(int id, String userName, String productName) async {
     showDialog(
       context: context,
       barrierDismissible: false,
-      builder: (_) => const Center(child: CircularProgressIndicator(color: Color(0xff185794))),
+      builder: (_) => const Center(
+          child: CircularProgressIndicator(color: Color(0xff185794))),
     );
 
     try {
@@ -257,7 +299,8 @@ class _EnquiryTabState extends State<EnquiryTab> {
       await showDialog(
         context: context,
         builder: (_) => Dialog(
-          insetPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 60),
+          insetPadding:
+              const EdgeInsets.symmetric(horizontal: 20, vertical: 60),
           backgroundColor: Colors.transparent,
           child: Stack(
             clipBehavior: Clip.none,
@@ -335,8 +378,9 @@ class _EnquiryTabState extends State<EnquiryTab> {
                       isInteractive: false,
                     ),
                     _buildInteractiveItem(
-                      label: "Enquired", // Changed from "Created" to "Enquired"
-                      value: d.createdDatetime?.split(".").first.replaceAll("T", " "),
+                      label: "Enquired",
+                      // Changed from "Created" to "Enquired"
+                      value: formatDateTime(d.createdDatetime),
                       icon: Icons.calendar_today,
                       isInteractive: false,
                     ),
@@ -347,10 +391,19 @@ class _EnquiryTabState extends State<EnquiryTab> {
                         Navigator.pop(context);
                         _refresh();
                       },
-                      icon: const Icon(Icons.close, size: 18, color: Colors.white,),
-                      label: const Text("Close", style: TextStyle(color: Colors.white),),
+                      icon: const Icon(
+                        Icons.close,
+                        size: 18,
+                        color: Colors.white,
+                      ),
+                      label: const Text(
+                        "Close",
+                        style: TextStyle(color: Colors.white),
+                      ),
                       style: ElevatedButton.styleFrom(
-                        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12), // Increased vertical padding
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 24, vertical: 12),
+                        // Increased vertical padding
                         backgroundColor: const Color(0xff185794),
                         shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(30),
@@ -369,7 +422,8 @@ class _EnquiryTabState extends State<EnquiryTab> {
                 child: CircleAvatar(
                   radius: 28,
                   backgroundColor: Colors.white,
-                  child: Icon(Icons.info_outline, size: 30, color: Color(0xff185794)),
+                  child: Icon(Icons.info_outline,
+                      size: 30, color: Color(0xff185794)),
                 ),
               ),
             ],
@@ -381,7 +435,8 @@ class _EnquiryTabState extends State<EnquiryTab> {
       showDialog(
         context: context,
         builder: (_) => AlertDialog(
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          shape:
+              RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
           title: const Text("Error", style: TextStyle(color: Colors.red)),
           content: Text("Unable to load enquiry details: $e"),
           actions: [
@@ -396,49 +451,32 @@ class _EnquiryTabState extends State<EnquiryTab> {
   }
 
   Widget _buildPagination() {
-    if (_items.isEmpty && widget.currentPage == 0) {
-      return const SizedBox.shrink();
+    if (_items.length < widget.pageSize && widget.currentPage == 0) {
+      return const SizedBox.shrink(); // Hide if no need to paginate
     }
 
-    final int totalPages = _totalPages;
-    int totalPagesToShow = 5;
-    int startPage = max(0, min(widget.currentPage - 2, totalPages - totalPagesToShow));
-    int endPage = min(startPage + totalPagesToShow - 1, totalPages - 1);
-    endPage = max(0, min(endPage, totalPages - 1));
+    const int maxPagesToShow = 5;
+    final double buttonSize = 30;
+    final double fontSize = 14;
 
-    final double screenWidth = MediaQuery.of(context).size.width;
-    final bool isSmallScreen = screenWidth < 400;
-    final bool isTablet = screenWidth >= 600;
-
-    final double buttonSize = isSmallScreen ? 26 : isTablet ? 36 : 30;
-    final double fontSize = isSmallScreen ? 13 : isTablet ? 17 : 15;
+    int startPage = max(0, min(widget.currentPage - (maxPagesToShow ~/ 2), _totalPages - maxPagesToShow));
+    int endPage = min(startPage + maxPagesToShow - 1, _totalPages - 1);
 
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 10),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          // Previous
+          // ← Previous
           if (widget.currentPage > 0)
-            InkWell(
-              onTap: () => widget.onPageChange(widget.currentPage - 1),
-              borderRadius: BorderRadius.circular(6),
-              child: Container(
-                width: buttonSize,
-                height: buttonSize,
-                alignment: Alignment.center,
-                child: Icon(Icons.chevron_left, color: const Color(0xff185794), size: fontSize + 2),
-              ),
-            ),
+            _buildArrowButton(false, () => widget.onPageChange(widget.currentPage - 1), buttonSize, fontSize),
 
-          // Page numbers
+          // Page buttons
           ...List.generate(endPage - startPage + 1, (index) {
-            final pageNumber = startPage + index;
+            final int pageNumber = startPage + index;
             final bool isSelected = pageNumber == widget.currentPage;
-
             return InkWell(
-              onTap: () => widget.onPageChange(pageNumber),
-              borderRadius: BorderRadius.circular(6),
+              onTap: isSelected ? null : () => widget.onPageChange(pageNumber),
               child: Container(
                 width: buttonSize,
                 height: buttonSize,
@@ -453,28 +491,36 @@ class _EnquiryTabState extends State<EnquiryTab> {
                 child: Text(
                   '${pageNumber + 1}',
                   style: TextStyle(
-                    color: const Color(0xff185794),
-                    fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
                     fontSize: fontSize,
+                    fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+                    color: const Color(0xff185794),
                   ),
                 ),
               ),
             );
           }),
 
-          // Next
-          if (widget.currentPage < totalPages - 1)
-            InkWell(
-              onTap: () => widget.onPageChange(widget.currentPage + 1),
-              borderRadius: BorderRadius.circular(6),
-              child: Container(
-                width: buttonSize,
-                height: buttonSize,
-                alignment: Alignment.center,
-                child: Icon(Icons.chevron_right, color: const Color(0xff185794), size: fontSize + 2),
-              ),
-            ),
+          // → Next
+          if (widget.currentPage < _totalPages - 1)
+            _buildArrowButton(true, () => widget.onPageChange(widget.currentPage + 1), buttonSize, fontSize),
         ],
+      ),
+    );
+  }
+
+  Widget _buildArrowButton(bool isNext, VoidCallback onTap, double size, double fontSize) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(6),
+      child: Container(
+        width: size,
+        height: size,
+        alignment: Alignment.center,
+        child: Icon(
+          isNext ? Icons.chevron_right : Icons.chevron_left,
+          size: fontSize + 4,
+          color: const Color(0xff185794),
+        ),
       ),
     );
   }
@@ -515,10 +561,26 @@ class _EnquiryTabState extends State<EnquiryTab> {
                         ),
                       ),
                     ),
+                    Align(
+                      alignment: Alignment.centerRight,
+                      child: Padding(
+                        padding: const EdgeInsets.only(right: 20),
+                        child:
+                        IconButton(
+                          icon: Image.asset(
+                            'assets/images/excel_icon.png',
+                            height: 24,
+                          ),
+                          tooltip: 'Download Enquiry Excel',
+                          onPressed: _downloadEnquiryExcelFile,
+                        ),
+                      ),
+                    ),
                   ],
                 ),
               ),
             ),
+
             buildTableHeader(),
             // List view + loader
             Expanded(
@@ -535,7 +597,8 @@ class _EnquiryTabState extends State<EnquiryTab> {
                           Icon(Icons.wifi_off, size: 16, color: Colors.orange),
                           SizedBox(width: 8),
                           Text('Waiting for connection...',
-                              style: TextStyle(color: Colors.orange, fontSize: 12)),
+                              style: TextStyle(
+                                  color: Colors.orange, fontSize: 12)),
                         ],
                       ),
                     ),
@@ -543,28 +606,40 @@ class _EnquiryTabState extends State<EnquiryTab> {
                     child: !_isConnected
                         ? _buildNoInternetWidget()
                         : _isLoading
-                        ? const Center(
-                      child: CircularProgressIndicator(
-                        color: Color(0xff185794),
-                        strokeWidth: 3,
-                      ),
-                    )
-                        : RefreshIndicator(
-                      onRefresh: _refresh,
-                      color: const Color(0xff185794),
-                      child: _items.isEmpty
-                          ? ListView(
-                        children: const [
-                          SizedBox(height: 100),
-                          Center(child: Text("No enquiries found.")),
-                        ],
-                      )
-                          : ListView.builder(
-                        itemCount: _items.length,
-                        itemBuilder: (context, index) =>
-                            _buildEnquiryCard(_items[index], index),
-                      ),
-                    ),
+                            ? const Center(
+                                child: CircularProgressIndicator(
+                                  color: Color(0xff185794),
+                                  strokeWidth: 3,
+                                ),
+                              )
+                            : RefreshIndicator(
+                                onRefresh: _refresh,
+                                color: const Color(0xff185794),
+                                child: _items.isEmpty
+                                    ? Center(
+                                      child: ListView(
+                                        children: [
+                                          SizedBox(
+                                            height: 180,
+                                            width: 180,
+                                            child: Lottie.asset(
+                                                "assets/animations/no_data_found.json",
+                                                width: 60),
+                                          ),
+                                          const SizedBox(height: 12),
+                                          Center(
+                                              child: Text(
+                                                  "No enquiries found.")),
+                                        ],
+                                      ),
+                                    )
+                                    : ListView.builder(
+                                        itemCount: _items.length,
+                                        itemBuilder: (context, index) =>
+                                            _buildEnquiryCard(
+                                                _items[index], index),
+                                      ),
+                              ),
                   ),
                 ],
               ),
@@ -582,31 +657,29 @@ class _EnquiryTabState extends State<EnquiryTab> {
 
   Widget _buildEnquiryCard(EnquiryItem item, int index) {
     final isNew = item.status == EnquiryStatus.newEnquiry;
-    final sideColor = isNew
-        ? const Color(0xff185794)
-        : Colors.grey;
-    final bgColor = isNew
-        ? Color(0xffeff4f8)
-        : Colors.white;
+    final sideColor = isNew ? const Color(0xff185794) : Colors.grey;
+    final bgColor = isNew ? Color(0xffeff4f8) : Colors.white;
 
     return Padding(
       padding: const EdgeInsets.only(left: 20, right: 20),
       child: Container(
-        margin: EdgeInsets.symmetric(vertical: 4.0), // Increased vertical margin for better separation
-        padding: EdgeInsets.symmetric(horizontal: 12, vertical: 8), // Increased vertical padding for better touch target
+        margin: EdgeInsets.symmetric(vertical: 4.0),
+        // Increased vertical margin for better separation
+        padding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        // Increased vertical padding for better touch target
         decoration: BoxDecoration(
           color: bgColor,
           borderRadius: BorderRadius.circular(8),
           border: isNew
               ? Border(
-            left: BorderSide(color: sideColor, width: 4),
-            top: BorderSide(color: sideColor, width: 1),
-            right: BorderSide(color: sideColor, width: 1),
-            bottom: BorderSide(color: sideColor, width: 1),
-          )
+                  left: BorderSide(color: sideColor, width: 4),
+                  top: BorderSide(color: sideColor, width: 1),
+                  right: BorderSide(color: sideColor, width: 1),
+                  bottom: BorderSide(color: sideColor, width: 1),
+                )
               : Border(
-            left: BorderSide(color: sideColor, width: 4),
-          ),
+                  left: BorderSide(color: sideColor, width: 4),
+                ),
           boxShadow: const [
             BoxShadow(
               color: Colors.black12,
@@ -623,57 +696,59 @@ class _EnquiryTabState extends State<EnquiryTab> {
             ),
             Expanded(
               flex: 4,
-              child: isNew ?
-              Text(
-                item.productName,
-                style: TextStyle(
-                    fontWeight: isNew ? FontWeight.bold : FontWeight.normal,
-                    fontSize: 16,
-                    color: Color(0xff185794)
-                ),
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-              ):
-              Text(
-                item.productName,
-                style: TextStyle(
-                  fontWeight: isNew ? FontWeight.bold : FontWeight.normal,
-                  fontSize: 14,
-                ),
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-              ),
+              child: isNew
+                  ? Text(
+                      item.productName,
+                      style: TextStyle(
+                          fontWeight:
+                              isNew ? FontWeight.bold : FontWeight.normal,
+                          fontSize: 16,
+                          color: Color(0xff185794)),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    )
+                  : Text(
+                      item.productName,
+                      style: TextStyle(
+                        fontWeight: isNew ? FontWeight.bold : FontWeight.normal,
+                        fontSize: 14,
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
             ),
-            isNew ?Expanded(
-              flex: 3,
-              child: Text(
-                item.userName,
-                style: const TextStyle(fontSize: 15,color: Color(0xff185794)),
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-              ),
-            ):
-            Expanded(
-              flex: 3,
-              child: Text(
-                item.userName,
-                style: const TextStyle(fontSize: 13),
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-              ),
-            ),
+            isNew
+                ? Expanded(
+                    flex: 3,
+                    child: Text(
+                      item.userName,
+                      style: const TextStyle(
+                          fontSize: 15, color: Color(0xff185794)),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  )
+                : Expanded(
+                    flex: 3,
+                    child: Text(
+                      item.userName,
+                      style: const TextStyle(fontSize: 13),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
             Expanded(
               flex: 2,
               child: IconButton(
                 icon: Icon(
                   isNew ? Icons.visibility_off : Icons.visibility,
-                  color: isNew
-                      ? const Color(0xff185794)
-                      : Colors.grey,
+                  color: isNew ? const Color(0xff185794) : Colors.grey,
                   size: 24, // Increased size for better touch target
                 ),
-                padding: EdgeInsets.all(8.0), // Added padding for better touch target
-                onPressed: () => _viewEnquiry(item.id, item.userName, item.productName),
+                padding: EdgeInsets.all(8.0),
+                // Added padding for better touch target
+                onPressed: () =>
+                    _viewEnquiry(item.id, item.userName, item.productName),
               ),
             ),
           ],
@@ -757,17 +832,18 @@ class _EnquiryTabState extends State<EnquiryTab> {
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Lottie.asset("assets/animations/internet.json", width: 200, height: 200),
+          Lottie.asset("assets/animations/internet.json",
+              width: 200, height: 200),
           const SizedBox(height: 16),
           const Text(
             'No Internet Connection',
-            style: TextStyle(fontSize: 16, fontWeight: FontWeight.w500, color: Colors.grey),
+            style: TextStyle(
+                fontSize: 16, fontWeight: FontWeight.w500, color: Colors.grey),
           ),
         ],
       ),
     );
   }
-
 
   @override
   void dispose() {

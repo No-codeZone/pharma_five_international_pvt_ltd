@@ -33,34 +33,27 @@ class _UserListTabState extends State<UserListTab> {
   int totalPages = 1;
   List<dynamic> _usersList = [];
   String selectedStatus = 'Pending';
-
-  // Connectivity monitoring
   final Connectivity _connectivity = Connectivity();
   late StreamSubscription<List<ConnectivityResult>> _connectivitySubscription;
-
   @override
   void initState() {
     super.initState();
     _initConnectivityMonitoring();
     _fetchUsers();
   }
-
   @override
   void dispose() {
     _connectivitySubscription.cancel();
     super.dispose();
   }
-
   Future<void> _initConnectivityMonitoring() async {
     await _checkConnectivity();
-
     _connectivitySubscription = _connectivity.onConnectivityChanged.listen((List<ConnectivityResult> results) {
       for (var result in results) {
         _handleConnectivityChange(result);
       }
     });
   }
-
   Future<void> _checkConnectivity() async {
     try {
       final List<ConnectivityResult> results = await _connectivity.checkConnectivity();
@@ -74,7 +67,6 @@ class _UserListTabState extends State<UserListTab> {
       }
     }
   }
-
   Future<void> _handleConnectivityChange(ConnectivityResult result) async {
     final bool wasConnected = _isConnected;
     final bool isNowConnected = result != ConnectivityResult.none;
@@ -86,7 +78,7 @@ class _UserListTabState extends State<UserListTab> {
         // Update UI first to indicate restored connectivity
         if (mounted) {
           setState(() => _isConnected = true);
-          _showToast("Internet connection restored", isError: false);
+          // _showToast("Internet connection restored", isError: false);
         }
 
         // Then fetch data with a short delay to allow network to stabilize
@@ -97,12 +89,11 @@ class _UserListTabState extends State<UserListTab> {
       else if (!isNowConnected && wasConnected) {
         if (mounted) {
           setState(() => _isConnected = false);
-          _showToast("No internet connection", isError: true);
+          // _showToast("No internet connection", isError: true);
         }
       }
     }
   }
-
   Widget _buildNoInternetWidget() {
     return Center(
       child: Column(
@@ -123,19 +114,10 @@ class _UserListTabState extends State<UserListTab> {
               color: Colors.grey,
             ),
           ),
-          // const SizedBox(height: 8),
-          // const Text(
-          //   'Reconnecting automatically...',
-          //   style: TextStyle(
-          //     fontSize: 14,
-          //     color: Colors.grey,
-          //   ),
-          // ),
         ],
       ),
     );
   }
-
   Future<void> _fetchUsers() async {
     if (!_isConnected) {
       return; // Don't attempt to fetch if offline
@@ -183,7 +165,6 @@ class _UserListTabState extends State<UserListTab> {
       }
     }
   }
-
   void _showToast(String message, {bool isError = false}) {
     Fluttertoast.showToast(
       msg: message,
@@ -193,7 +174,6 @@ class _UserListTabState extends State<UserListTab> {
       toastLength: Toast.LENGTH_SHORT,
     );
   }
-
   Widget _buildStatusDropdown() {
     return Container(
       height: 40,
@@ -224,7 +204,6 @@ class _UserListTabState extends State<UserListTab> {
       ),
     );
   }
-
   Widget _statusLabel(String label, Color color) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
@@ -232,7 +211,6 @@ class _UserListTabState extends State<UserListTab> {
       child: Text(label, style: const TextStyle(color: Colors.white, fontSize: 12)),
     );
   }
-
   Widget _editIcon(VoidCallback onTap) {
     return InkWell(
       onTap: _isConnected ? onTap : null,
@@ -250,7 +228,6 @@ class _UserListTabState extends State<UserListTab> {
       ),
     );
   }
-
   Widget _circleIcon(IconData icon, Color color, VoidCallback onTap) {
     return InkWell(
       onTap: _isConnected ? onTap : null,
@@ -264,7 +241,6 @@ class _UserListTabState extends State<UserListTab> {
       ),
     );
   }
-
   Widget _buildStatusControls(dynamic status, String email) {
     String statusStr = (status ?? '').toString().toLowerCase();
 
@@ -299,7 +275,6 @@ class _UserListTabState extends State<UserListTab> {
         return _statusLabel('Pending', Colors.orange);
     }
   }
-
   Widget _buildPagination() {
     if (totalPages <= 1) return const SizedBox.shrink();
 
@@ -370,7 +345,6 @@ class _UserListTabState extends State<UserListTab> {
       ),
     );
   }
-
   Widget _buildArrowButton({
     required bool isNext,
     required bool enabled,
@@ -394,7 +368,6 @@ class _UserListTabState extends State<UserListTab> {
       ),
     );
   }
-
   Widget _buildEmptyState() {
     return Center(
       child: Column(
@@ -408,7 +381,6 @@ class _UserListTabState extends State<UserListTab> {
       ),
     );
   }
-
   Widget _buildLoadingIndicator() {
     return const Center(
         child: Column(
@@ -421,7 +393,6 @@ class _UserListTabState extends State<UserListTab> {
         )
     );
   }
-
   Widget _buildUserList() {
     if (!_isConnected) {
       return _buildNoInternetWidget();
@@ -522,7 +493,6 @@ class _UserListTabState extends State<UserListTab> {
       ],
     );
   }
-
   @override
   Widget build(BuildContext context) {
     final screenWidth = MediaQuery.of(context).size.width;
@@ -602,7 +572,6 @@ class _UserListTabState extends State<UserListTab> {
       ),
     );
   }
-
   void _showApproveDialog(String email) {
     showDialog(
       context: context,
@@ -669,7 +638,6 @@ class _UserListTabState extends State<UserListTab> {
       },
     );
   }
-
   void _showRejectDialog(String email) {
     showDialog(
       context: context,
@@ -730,10 +698,9 @@ class _UserListTabState extends State<UserListTab> {
       },
     );
   }
-
   Future<void> _updateStatusByEmail(String email, String newStatus) async {
     if (!_isConnected) {
-      _showToast("No internet connection", isError: true);
+      // _showToast("No internet connection", isError: true);
       return;
     }
 
@@ -760,28 +727,11 @@ class _UserListTabState extends State<UserListTab> {
         if (responseData['success'] == true) {
           _showToast("Status updated successfully", isError: false);
 
-          // Call the parent widget's callback only once
+          // Call the parent widget's callback
           widget.onStatusUpdate(email, newStatus);
 
-          // Determine if we need to switch tabs based on the new status
-          if (newStatus == 'Active' && selectedStatus != 'Approved') {
-            // User was approved, switch to Approved tab
-            setState(() {
-              selectedStatus = 'Approved';
-              widget.onPageChange(0); // Reset to first page of new tab
-            });
-            // The fetch will happen via didUpdateWidget when the page changes
-          } else if (newStatus == 'Reject' && selectedStatus != 'Rejected') {
-            // User was rejected, switch to Rejected tab
-            setState(() {
-              selectedStatus = 'Rejected';
-              widget.onPageChange(0); // Reset to first page of new tab
-            });
-            // The fetch will happen via didUpdateWidget when the page changes
-          } else {
-            // If staying on same tab, we need to refresh the data
-            await _fetchUsers();
-          }
+          // Simply refresh the current listing without changing tabs
+          await _fetchUsers();
         } else {
           _showToast("Status update failed", isError: true);
         }
@@ -791,7 +741,7 @@ class _UserListTabState extends State<UserListTab> {
     } catch (e) {
       if (e is SocketException || e is TimeoutException) {
         setState(() => _isConnected = false);
-        _showToast("No internet connection", isError: true);
+        // _showToast("No internet connection", isError: true);
       } else {
         _showToast("Error updating status", isError: true);
       }
@@ -802,7 +752,6 @@ class _UserListTabState extends State<UserListTab> {
       });
     }
   }
-
   @override
   void didUpdateWidget(UserListTab oldWidget) {
     super.didUpdateWidget(oldWidget);

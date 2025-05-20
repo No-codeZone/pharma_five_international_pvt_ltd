@@ -74,6 +74,9 @@ class _ProductListTabState extends State<ProductListTab> {
   List<Products> _filteredProducts = [];
   int _currentPage = 0;
   bool _hasMore = true;
+  bool _isSearchActive = false;
+  String _activeSearchTerm = '';
+
 
   @override
   void initState() {
@@ -101,10 +104,10 @@ class _ProductListTabState extends State<ProductListTab> {
           _isConnected = connected;
         });
 
-        Fluttertoast.showToast(
-          msg: connected ? "Internet connected" : "Internet disconnected",
-          backgroundColor: connected ? Color(0xff185794) : Colors.red,
-        );
+        // Fluttertoast.showToast(
+        //   msg: connected ? "Internet connected" : "Internet disconnected",
+        //   backgroundColor: connected ? Color(0xff185794) : Colors.red,
+        // );
 
         // On reconnection, always refresh the current view
         if (connected && mounted) {
@@ -354,30 +357,35 @@ class _ProductListTabState extends State<ProductListTab> {
   }
 
   // 2️⃣ Search method
-  Future<void> _searchProducts(String searchTerm) async {
+  Future<void> _searchProducts(String searchTerm, {int page = 0}) async {
     if (!_isConnected) {
-      _showToast("No internet connection", isError: true);
+      // _showToast("No internet connection", isError: true);
       return;
     }
 
-    if (searchTerm.trim().isEmpty) {
+    final trimmed = searchTerm.trim();
+    if (trimmed.isEmpty) {
       setState(() {
-        _currentProductPage = 0;
+        _isSearchActive = false;
+        _activeSearchTerm = '';
         _searchErrorMessage = '';
+        _currentProductPage = 0;
       });
-      await loadProducts(page: _currentPage);
+      await loadProducts(page: 0);
       return;
     }
 
     setState(() {
+      _isSearchActive = true;
+      _activeSearchTerm = trimmed;
       _isSearchLoading = true;
       _searchErrorMessage = '';
+      _currentProductPage = page;
     });
 
     try {
-      final result = await _apiService.searchProducts(searchTerm);
+      final result = await _apiService.searchProducts(trimmed, index: page, limit: _itemsPerPage);
       if (result != null && result.searchProducts != null) {
-        // ← convert SearchProducts → GetProducts
         final converted = result.searchProducts!.map((sp) {
           return GetProducts(
             serialNo: sp.serialNo,
@@ -390,19 +398,22 @@ class _ProductListTabState extends State<ProductListTab> {
           products = converted;
           filteredProducts = converted;
           _totalProductCount = result.totalCount ?? converted.length;
-          _hasMoreProduct = converted.length >= _itemsPerPage;
-          _currentProductPage = 0;
+          _hasMoreProduct = ((page + 1) * _itemsPerPage) < _totalProductCount;
         });
       } else {
         setState(() {
           products = [];
           filteredProducts = [];
-          _searchErrorMessage = 'No products found for “$searchTerm”';
+          _searchErrorMessage = 'No products found for "$trimmed"';
+          _hasMoreProduct = false;
         });
       }
     } catch (e) {
       setState(() {
         _searchErrorMessage = 'Search error: ${e.toString()}';
+        products = [];
+        filteredProducts = [];
+        _hasMoreProduct = false;
       });
     } finally {
       setState(() {
@@ -531,7 +542,7 @@ class _ProductListTabState extends State<ProductListTab> {
 
   Future<void> _loadProductsByField(String field, {int page = 0}) async {
     if (!_isConnected) {
-      _showToast("No internet connection", isError: true);
+      // _showToast("No internet connection", isError: true);
       return;
     }
 
@@ -656,7 +667,7 @@ class _ProductListTabState extends State<ProductListTab> {
 
   Future<void> loadProducts({int page = 0}) async {
     if (!_isConnected) {
-      _showToast("No internet connection", isError: true);
+      // _showToast("No internet connection", isError: true);
       return;
     }
 
@@ -1162,9 +1173,11 @@ class _ProductListTabState extends State<ProductListTab> {
     return ListView.builder(
       physics: const AlwaysScrollableScrollPhysics(),
       itemCount: filteredProducts.length,
+      // itemCount: getPaginatedProducts().length,
       itemBuilder: (context, index) {
         final product = filteredProducts[index];
-        return buildTableRow((_currentPage * _itemsPerPage) + index, product); // Send absolute index for proper numbering
+        final absoluteIndex = _currentProductPage * _itemsPerPage + index;
+        return buildTableRow(absoluteIndex, product);
       },
     );
   }
@@ -1849,17 +1862,16 @@ class _ProductListTabState extends State<ProductListTab> {
     );
   }
   Widget _buildPagination() {
-    if (filteredProducts.isEmpty && _currentPage == 0) {
+    if (filteredProducts.isEmpty && _currentProductPage == 0) {
       return const SizedBox.shrink(); // No pagination needed
     }
 
     final int totalPages = (_totalProductCount / _itemsPerPage).ceil();
     const int maxPagesToShow = 7;
 
-    int startPage = max(0, min(_currentPage - (maxPagesToShow ~/ 2), totalPages - maxPagesToShow));
+    int startPage = max(0, min(_currentProductPage - (maxPagesToShow ~/ 2), totalPages - maxPagesToShow));
     int endPage = min(startPage + maxPagesToShow - 1, totalPages - 1);
 
-    // ✅ Fixed-size: smaller button & font
     final double buttonSize = 30;
     final double fontSize = 14;
 
@@ -1868,19 +1880,21 @@ class _ProductListTabState extends State<ProductListTab> {
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          // Previous page button
-          if (_currentPage > 0)
+          if (_currentProductPage > 0)
             _buildPageArrow(isNext: false, fontSize: fontSize, buttonSize: buttonSize),
 
-          // Page number buttons
           ...List.generate(endPage - startPage + 1, (index) {
             final int pageNumber = startPage + index;
-            final bool isSelected = pageNumber == _currentPage;
+            final bool isSelected = pageNumber == _currentProductPage;
 
             return InkWell(
               onTap: () {
-                if (_currentPage != pageNumber) {
-                  if (_selectedMedicalField != null) {
+                if (_currentProductPage != pageNumber) {
+                  setState(() => _currentProductPage = pageNumber);
+
+                  if (_searchController.text.trim().isNotEmpty) {
+                    _searchProducts(_searchController.text.trim(), page: pageNumber);
+                  } else if (_selectedMedicalField != null) {
                     _loadProductsByField(_selectedMedicalField!, page: pageNumber);
                   } else {
                     loadProducts(page: pageNumber);
@@ -1912,8 +1926,7 @@ class _ProductListTabState extends State<ProductListTab> {
             );
           }),
 
-          // Next page button
-          if (_currentPage < totalPages - 1 && _hasMore)
+          if (_currentProductPage < totalPages - 1 && _hasMoreProduct)
             _buildPageArrow(isNext: true, fontSize: fontSize, buttonSize: buttonSize),
         ],
       ),
@@ -1924,10 +1937,15 @@ class _ProductListTabState extends State<ProductListTab> {
     required double fontSize,
     required double buttonSize,
   }) {
+    final targetPage = isNext ? _currentProductPage + 1 : _currentProductPage - 1;
+
     return InkWell(
       onTap: () {
-        final targetPage = isNext ? _currentPage + 1 : _currentPage - 1;
-        if (_selectedMedicalField != null) {
+        setState(() => _currentProductPage = targetPage);
+
+        if (_searchController.text.trim().isNotEmpty) {
+          _searchProducts(_searchController.text.trim(), page: targetPage);
+        } else if (_selectedMedicalField != null) {
           _loadProductsByField(_selectedMedicalField!, page: targetPage);
         } else {
           loadProducts(page: targetPage);

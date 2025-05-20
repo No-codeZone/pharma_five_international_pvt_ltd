@@ -24,50 +24,11 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
   int _userPage = 0;
   int _enquiryPage = 0;
 
-
-  void _onStatusUpdate(String email, String newStatus) async {
-    final url = Uri.parse("${_apiService.baseUrl}${_apiService.userUpdateAPI}");
-    final requestBody = {
-      "email": email,
-      "status": newStatus, // "Active" or "Reject"
-    };
-
-    try {
-      final response = await http.put(
-        url,
-        headers: {"Content-Type": "application/json"},
-        body: jsonEncode(requestBody),
-      );
-
-      final responseData = jsonDecode(response.body);
-      if (response.statusCode == 200 && responseData['success'] == true) {
-        Fluttertoast.showToast(
-          msg: "Status updated for $email",
-          backgroundColor: Color(0xff185794),
-          textColor: Colors.white,
-          gravity: ToastGravity.TOP,
-        );
-
-        // Optionally trigger refresh of user list
-        setState(() {
-          _currentPage = 0;
-        });
-      } else {
-        Fluttertoast.showToast(
-          msg: "Failed: ${responseData['message'] ?? 'Unknown error'}",
-          backgroundColor: Colors.red,
-          textColor: Colors.white,
-          gravity: ToastGravity.TOP,
-        );
-      }
-    } catch (e) {
-      Fluttertoast.showToast(
-        msg: "Error updating status: $e",
-        backgroundColor: Colors.red,
-        textColor: Colors.white,
-        gravity: ToastGravity.TOP,
-      );
-    }
+  void _onStatusUpdate(String email, String newStatus) {
+    // Optionally refresh the page (e.g., if list needs to be refreshed)
+    setState(() {
+      _currentPage = 0;
+    });
   }
 
   @override
@@ -88,6 +49,13 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
         child: IndexedStack(
           index: _selectedTab,
           children: [
+            EnquiryTab(
+              currentPage: _enquiryPage,
+              onPageChange: (newPage) {
+                setState(() => _enquiryPage = newPage);
+              },
+              pageSize: 10, // optional if you want a different page size
+            ),
             UserListTab(
               // selectedStatus: selectedStatus,
               currentPage: _currentPage,
@@ -97,13 +65,6 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                   _currentPage = newPage;
                 });
               },
-            ),
-            EnquiryTab(
-              currentPage: _enquiryPage,
-              onPageChange: (newPage) {
-                setState(() => _enquiryPage = newPage);
-              },
-              pageSize: 10, // optional if you want a different page size
             ),
             const ProductListTab(),
             const ReportTab(),
@@ -131,6 +92,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
           currentIndex: _selectedTab,
           onTap: (index) => setState(() => _selectedTab = index),
           items: [
+            // 🟢 0: Enquiry tab
             BottomNavigationBarItem(
               icon: Padding(
                 padding: const EdgeInsets.only(left: 3.0),
@@ -138,17 +100,16 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                   height: 20,
                   width: 20,
                   child: Image.asset(
-                      _selectedTab == 0
-                          ? "assets/images/user_lists.png"
-                          : "assets/images/user_list2.png",
-                      // height: 20,
-                      // width: 20,
-                      alignment: Alignment.center,
-                      fit: BoxFit.contain
+                    _selectedTab == 0
+                        ? "assets/images/enquiry_1.png"
+                        : "assets/images/enquiry_2.png",
+                    fit: BoxFit.contain,
+                    alignment: Alignment.center,
                   ),
                 ),
               ),
             ),
+            // 🔵 1: User tab
             BottomNavigationBarItem(
               icon: Padding(
                 padding: const EdgeInsets.only(left: 3.0),
@@ -156,17 +117,16 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                   height: 20,
                   width: 20,
                   child: Image.asset(
-                      _selectedTab == 1
-                          ? "assets/images/enquiry_1.png"
-                          : "assets/images/enquiry_2.png",
-                      // height: 20,
-                      // width: 20,
-                      alignment: Alignment.center,
-                      fit: BoxFit.contain
+                    _selectedTab == 1
+                        ? "assets/images/user_lists.png"
+                        : "assets/images/user_list2.png",
+                    fit: BoxFit.contain,
+                    alignment: Alignment.center,
                   ),
                 ),
               ),
             ),
+            // 🟣 2: Product tab
             BottomNavigationBarItem(
               icon: Padding(
                 padding: const EdgeInsets.only(left: 3.0),
@@ -174,17 +134,16 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                   height: 20,
                   width: 20,
                   child: Image.asset(
-                      _selectedTab == 2
-                          ? "assets/images/product_list.png"
-                          : "assets/images/product_list2.png",
-                      // height: 20,
-                      // width: 20,
-                      alignment: Alignment.center,
-                      fit: BoxFit.contain
+                    _selectedTab == 2
+                        ? "assets/images/product_list.png"
+                        : "assets/images/product_list2.png",
+                    fit: BoxFit.contain,
+                    alignment: Alignment.center,
                   ),
                 ),
               ),
             ),
+            // 🟠 3: Report tab
             BottomNavigationBarItem(
               icon: Padding(
                 padding: const EdgeInsets.only(left: 5.0),
