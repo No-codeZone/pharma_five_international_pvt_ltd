@@ -143,13 +143,18 @@ class _ReportTabState extends State<ReportTab> with SingleTickerProviderStateMix
 
   Future<void> _downloadProductSearchLogExcel() async {
     try {
-      // ✅ Step 1: Check Internet
-      final connectivityResult = await Connectivity().checkConnectivity();
-      final isConnected = connectivityResult == ConnectivityResult.mobile ||
-          connectivityResult == ConnectivityResult.wifi ||
-          connectivityResult == ConnectivityResult.ethernet;
+      // ✅ Step 1: Reliable Internet Check
+      bool hasInternet = false;
+      try {
+        final result = await InternetAddress.lookup('google.com');
+        if (result.isNotEmpty && result[0].rawAddress.isNotEmpty) {
+          hasInternet = true;
+        }
+      } on SocketException catch (_) {
+        hasInternet = false;
+      }
 
-      if (!isConnected) {
+      if (!hasInternet) {
         Fluttertoast.showToast(
           msg: "No internet connection",
           backgroundColor: Colors.red,

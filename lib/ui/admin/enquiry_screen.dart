@@ -174,18 +174,23 @@ class _EnquiryTabState extends State<EnquiryTab> {
   Future<void> _downloadEnquiryExcelFile() async {
     const downloadUrl = "http://13.49.224.44:8080/api/enquiry/download";
 
-    // ✅ Step 1: Check Internet
     try {
-      final connectivityResult = await Connectivity().checkConnectivity();
-      final isConnected = connectivityResult == ConnectivityResult.mobile ||
-          connectivityResult == ConnectivityResult.wifi ||
-          connectivityResult == ConnectivityResult.ethernet;
+      // ✅ Reliable Internet Check
+      bool hasInternet = false;
+      try {
+        final result = await InternetAddress.lookup('google.com');
+        if (result.isNotEmpty && result[0].rawAddress.isNotEmpty) {
+          hasInternet = true;
+        }
+      } on SocketException catch (_) {
+        hasInternet = false;
+      }
 
-      if (!isConnected) {
+      if (!hasInternet) {
         Fluttertoast.showToast(
           msg: "No internet connection",
           backgroundColor: Colors.red,
-          gravity: ToastGravity.TOP
+          gravity: ToastGravity.TOP,
         );
         return;
       }
@@ -200,6 +205,7 @@ class _EnquiryTabState extends State<EnquiryTab> {
         Fluttertoast.showToast(
           msg: "Unable to access storage",
           backgroundColor: Colors.red,
+          gravity: ToastGravity.TOP,
         );
         return;
       }
@@ -217,6 +223,7 @@ class _EnquiryTabState extends State<EnquiryTab> {
         Fluttertoast.showToast(
           msg: "Failed to download file: Status ${response.statusCode}",
           backgroundColor: Colors.red,
+          gravity: ToastGravity.TOP,
         );
       }
     } catch (e) {
@@ -224,10 +231,10 @@ class _EnquiryTabState extends State<EnquiryTab> {
       Fluttertoast.showToast(
         msg: "Download failed: $e",
         backgroundColor: Colors.red,
+        gravity: ToastGravity.TOP,
       );
     }
   }
-
 
   Widget _buildInteractiveItem({
     required String label,
