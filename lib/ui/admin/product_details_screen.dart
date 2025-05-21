@@ -674,7 +674,7 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen> {
                     ),
                     const SizedBox(height: 8),
                     if (p.indication != null && p.indication!.isNotEmpty)
-                      _buildInfoCard("Reference Link", p.referenceLink),
+                      buildInfoCard(context, "Reference Link", p.referenceLink)
                     // const SizedBox(height: 3),
                   ],
                 ),

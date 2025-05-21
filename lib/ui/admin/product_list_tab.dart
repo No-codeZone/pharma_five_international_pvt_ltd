@@ -270,44 +270,143 @@ class _ProductListTabState extends State<ProductListTab> {
   }
 
   void _showPermissionSettingsDialog(String title, String message, {bool isWarningOnly = false}) {
+    final ThemeData theme = Theme.of(context);
+    final Color primaryColor = const Color(0xff185794);
+
     showDialog(
       context: context,
+      barrierDismissible: false,
       builder: (BuildContext context) => AlertDialog(
-        title: Text(title),
+        backgroundColor: Colors.white,
+        shape: RoundedRectangleBorder(
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(10), bottom: Radius.circular(10)),
+          side: BorderSide(color: Colors.grey.shade300),
+        ),
+        title: Text(
+          title,
+          textAlign: TextAlign.center,
+          style: const TextStyle(
+            color: Color(0xff185794),
+            fontWeight: FontWeight.w600,
+            fontSize: 18,
+          ),
+        ),
         content: SingleChildScrollView(
           child: ListBody(
             children: <Widget>[
-              Text(message),
-              const SizedBox(height: 10),
+              Text(
+                message,
+                textAlign: TextAlign.center,
+                style: const TextStyle(
+                  fontSize: 16,
+                  color: Colors.black87,
+                  height: 1.4,
+                ),
+              ),
+              const SizedBox(height: 16),
               if (!isWarningOnly)
-                Text(
-                  'To fix this, you need to enable permissions in your device settings.',
-                  style: TextStyle(fontStyle: FontStyle.italic, fontSize: 12),
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: primaryColor.withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Row(
+                    children: [
+                      Icon(
+                        Icons.info_outline,
+                        color: primaryColor,
+                        size: 20,
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Text(
+                          'Please enable the required permissions in your device settings.',
+                          style: TextStyle(
+                            color: Colors.black87,
+                            fontSize: 13,
+                            height: 1.3,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
             ],
           ),
         ),
-        actions: <Widget>[
-          TextButton(
-            child: const Text('Cancel'),
-            onPressed: () => Navigator.of(context).pop(),
+        actions: [
+          const SizedBox(height: 20),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              SizedBox(
+                height: 40,
+                child: ElevatedButton(
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.white,
+                    foregroundColor: primaryColor,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    side: BorderSide(color: primaryColor),
+                    elevation: 0,
+                  ),
+                  child: const Text(
+                    'Cancel',
+                    style: TextStyle(fontWeight: FontWeight.w500),
+                  ),
+                  onPressed: () => Navigator.of(context).pop(),
+                ),
+              ),
+              const Expanded(child: SizedBox(width: 10)),
+              if (!isWarningOnly)
+                SizedBox(
+                  height: 40,
+                  child: ElevatedButton(
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: primaryColor,
+                      foregroundColor: Colors.white,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      elevation: 0,
+                    ),
+                    child: const Text(
+                      'Open Settings',
+                      style: TextStyle(fontWeight: FontWeight.w500),
+                    ),
+                    onPressed: () {
+                      Navigator.of(context).pop();
+                      openAppSettings();
+                    },
+                  ),
+                ),
+              if (isWarningOnly)
+                SizedBox(
+                  height: 40,
+                  child: ElevatedButton(
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: primaryColor,
+                      foregroundColor: Colors.white,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      elevation: 0,
+                    ),
+                    child: const Text(
+                      'Continue Anyway',
+                      style: TextStyle(fontWeight: FontWeight.w500),
+                    ),
+                    onPressed: () {
+                      Navigator.of(context).pop();
+                    },
+                  ),
+                ),
+            ],
           ),
-          if (!isWarningOnly)
-            TextButton(
-              child: const Text('Open Settings'),
-              onPressed: () {
-                Navigator.of(context).pop();
-                openAppSettings();
-              },
-            ),
-          if (isWarningOnly)
-            TextButton(
-              child: const Text('Continue Anyway'),
-              onPressed: () {
-                Navigator.of(context).pop();
-              },
-            ),
         ],
+        actionsPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
       ),
     );
   }
@@ -774,7 +873,7 @@ class _ProductListTabState extends State<ProductListTab> {
 
       // Set 90s timeout
       bool timedOut = false;
-      final timer = Timer(const Duration(seconds: 90), () {
+      final timer = Timer(const Duration(seconds: 300), () {
         timedOut = true;
         if (mounted) {
           Navigator.of(context, rootNavigator: true).pop(); // Close loader

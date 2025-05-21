@@ -1,12 +1,16 @@
 import 'dart:async';
 import 'dart:io';
 import 'dart:math';
+import 'package:device_info_plus/device_info_plus.dart';
 import 'package:http/http.dart' as http;
 import 'package:intl/intl.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:flutter/material.dart';
 import 'package:fluttertoast/fluttertoast.dart';
 import 'package:lottie/lottie.dart';
+import 'package:open_file/open_file.dart';
+import 'package:path_provider/path_provider.dart';
+import 'package:permission_handler/permission_handler.dart';
 import '../../helper/communication_handler.dart';
 import '../../helper/file_downloader_helper.dart';
 import '../../service/api_service.dart';
@@ -171,68 +175,402 @@ class _EnquiryTabState extends State<EnquiryTab> {
     }
   }
 
-  Future<void> _downloadEnquiryExcelFile() async {
-    const downloadUrl = "http://13.49.224.44:8080/api/enquiry/download";
+  void _showToast(String message, {bool isError = false}) {
+    Fluttertoast.showToast(
+      msg: message,
+      backgroundColor: isError ? Colors.red.shade700 : Color(0xff185794),
+      textColor: Colors.white,
+      fontSize: 16.0,
+      toastLength: Toast.LENGTH_LONG,
+      gravity: ToastGravity.TOP,
+      timeInSecForIosWeb: 3,
+    );
+  }
+
+
+  Future<bool> _requestFileOperationPermissions() async {
+    // Check current connection first
+    if (!_isConnected) {
+      _showToast("No internet connection", isError: true);
+      return false;
+    }
+
+    // Platform-specific permission handling
+    if (Platform.isAndroid) {
+      return await _requestAndroidPermissions();
+    } else if (Platform.isIOS) {
+      return await _requestIOSPermissions();
+    } else {
+      // Default fallback for other platforms
+      _showToast("File operations may not be fully supported on this platform", isError: true);
+      return true;
+    }
+  }
+
+  Future<bool> _requestAndroidPermissions() async {
+    final deviceInfo = DeviceInfoPlugin();
+    final androidInfo = await deviceInfo.androidInfo;
+    final sdkInt = androidInfo.version.sdkInt;
+
+    // Android 13+ (API 33+)
+    if (sdkInt >= 33) {
+      // Request READ_MEDIA_IMAGES for accessing media files
+      final photosStatus = await Permission.photos.request();
+      // Request READ_MEDIA_DOCUMENTS for importing Excel files
+      final documentsStatus = await Permission.mediaLibrary.request();
+
+      if (photosStatus.isGranted && documentsStatus.isGranted) {
+        return true;
+      }
+
+      if (photosStatus.isPermanentlyDenied || documentsStatus.isPermanentlyDenied) {
+        _showPermissionSettingsDialog(
+            "Media access required",
+            "Access to photos and documents is required for importing and exporting Excel files."
+        );
+        return false;
+      }
+
+      if (photosStatus.isDenied || documentsStatus.isDenied) {
+        _showToast("Media permissions are required for Excel operations", isError: true);
+        return false;
+      }
+    }
+    // Android 11-12 (API 30-32)
+    else if (sdkInt >= 30) {
+      // Try regular storage permission first
+      final storageStatus = await Permission.storage.request();
+
+      if (storageStatus.isGranted) {
+        // For Android 11+, we need MANAGE_EXTERNAL_STORAGE for full access
+        final manageStatus = await Permission.manageExternalStorage.request();
+        if (manageStatus.isGranted) {
+          return true;
+        }
+
+        // If basic storage permission is granted but not manage, we can still try
+        // to use more restricted access methods (scoped storage)
+        if (manageStatus.isPermanentlyDenied) {
+          _showPermissionSettingsDialog(
+              "Storage access limited",
+              "For full access to manage files, additional permissions are needed. " +
+                  "Excel files will be saved to app-specific folders.",
+              isWarningOnly: true
+          );
+        }
+        return true;
+      }
+
+      if (storageStatus.isPermanentlyDenied) {
+        _showPermissionSettingsDialog(
+            "Storage access required",
+            "Storage access is required for importing and exporting Excel files."
+        );
+        return false;
+      }
+    }
+    // Android 10 and below (API 29-)
+    else {
+      final status = await Permission.storage.request();
+
+      if (status.isGranted) {
+        return true;
+      }
+
+      if (status.isPermanentlyDenied) {
+        _showPermissionSettingsDialog(
+            "Storage access required",
+            "Storage access is required for importing and exporting Excel files."
+        );
+        return false;
+      }
+    }
+
+    _showToast("Storage permissions are needed for Excel operations", isError: true);
+    return false;
+  }
+
+  Future<bool> _requestIOSPermissions() async {
+    final documentsStatus = await Permission.storage.request();
+
+    if (documentsStatus.isGranted) {
+      return true;
+    }
+
+    if (documentsStatus.isPermanentlyDenied) {
+      _showPermissionSettingsDialog(
+          "Storage access required",
+          "This app needs permission to store Excel files in your device's Documents directory."
+      );
+      return false;
+    }
+
+    _showToast("Storage permission is required for Excel file operations.", isError: true);
+    return false;
+  }
+
+  void _showPermissionSettingsDialog(String title, String message, {bool isWarningOnly = false}) {
+    final ThemeData theme = Theme.of(context);
+    final Color primaryColor = const Color(0xff185794);
+
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (BuildContext context) => AlertDialog(
+        backgroundColor: Colors.white,
+        shape: RoundedRectangleBorder(
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(10), bottom: Radius.circular(10)),
+          side: BorderSide(color: Colors.grey.shade300),
+        ),
+        title: Text(
+          title,
+          textAlign: TextAlign.center,
+          style: const TextStyle(
+            color: Color(0xff185794),
+            fontWeight: FontWeight.w600,
+            fontSize: 18,
+          ),
+        ),
+        content: SingleChildScrollView(
+          child: ListBody(
+            children: <Widget>[
+              Text(
+                message,
+                textAlign: TextAlign.center,
+                style: const TextStyle(
+                  fontSize: 16,
+                  color: Colors.black87,
+                  height: 1.4,
+                ),
+              ),
+              const SizedBox(height: 16),
+              if (!isWarningOnly)
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: primaryColor.withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Row(
+                    children: [
+                      Icon(
+                        Icons.info_outline,
+                        color: primaryColor,
+                        size: 20,
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Text(
+                          'Please enable the required permissions in your device settings.',
+                          style: TextStyle(
+                            color: Colors.black87,
+                            fontSize: 13,
+                            height: 1.3,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+            ],
+          ),
+        ),
+        actions: [
+          const SizedBox(height: 20),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              SizedBox(
+                height: 40,
+                child: ElevatedButton(
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.white,
+                    foregroundColor: primaryColor,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    side: BorderSide(color: primaryColor),
+                    elevation: 0,
+                  ),
+                  child: const Text(
+                    'Cancel',
+                    style: TextStyle(fontWeight: FontWeight.w500),
+                  ),
+                  onPressed: () => Navigator.of(context).pop(),
+                ),
+              ),
+              const Expanded(child: SizedBox(width: 10)),
+              if (!isWarningOnly)
+                SizedBox(
+                  height: 40,
+                  child: ElevatedButton(
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: primaryColor,
+                      foregroundColor: Colors.white,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      elevation: 0,
+                    ),
+                    child: const Text(
+                      'Open Settings',
+                      style: TextStyle(fontWeight: FontWeight.w500),
+                    ),
+                    onPressed: () {
+                      Navigator.of(context).pop();
+                      openAppSettings();
+                    },
+                  ),
+                ),
+              if (isWarningOnly)
+                SizedBox(
+                  height: 40,
+                  child: ElevatedButton(
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: primaryColor,
+                      foregroundColor: Colors.white,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      elevation: 0,
+                    ),
+                    child: const Text(
+                      'Continue Anyway',
+                      style: TextStyle(fontWeight: FontWeight.w500),
+                    ),
+                    onPressed: () {
+                      Navigator.of(context).pop();
+                    },
+                  ),
+                ),
+            ],
+          ),
+        ],
+        actionsPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      ),
+    );
+  }
+
+  Future<Directory?> _getAppropriateDirectory() async {
+    Directory? directory;
 
     try {
-      // ✅ Reliable Internet Check
-      bool hasInternet = false;
-      try {
-        final result = await InternetAddress.lookup('google.com');
-        if (result.isNotEmpty && result[0].rawAddress.isNotEmpty) {
-          hasInternet = true;
+      if (Platform.isAndroid) {
+        final deviceInfo = DeviceInfoPlugin();
+        final androidInfo = await deviceInfo.androidInfo;
+        final sdkInt = androidInfo.version.sdkInt;
+
+        if (sdkInt >= 30) {
+          // Android 11+ (API 30+)
+          final manageStatus = await Permission.manageExternalStorage.status;
+          if (manageStatus.isGranted) {
+            directory = Directory("/storage/emulated/0/Download");
+            if (!await directory.exists()) {
+              directory = await getExternalStorageDirectory();
+            }
+          } else {
+            // Use app-specific external directory (scoped storage)
+            directory = await getExternalStorageDirectory();
+          }
+        } else {
+          // Android 10 and below
+          directory = Directory("/storage/emulated/0/Download");
+          if (!await directory.exists()) {
+            directory = await getExternalStorageDirectory();
+          }
         }
-      } on SocketException catch (_) {
-        hasInternet = false;
+      } else if (Platform.isIOS) {
+        // ✅ Use Documents directory – visible in Files app, safe for .xlsx
+        directory = await getApplicationDocumentsDirectory();
+      } else {
+        // Fallback for other platforms
+        directory = await getApplicationDocumentsDirectory();
       }
 
-      if (!hasInternet) {
-        Fluttertoast.showToast(
-          msg: "No internet connection",
-          backgroundColor: Colors.red,
-          gravity: ToastGravity.TOP,
-        );
+      return directory;
+    } catch (e) {
+      // Catch any exception and fallback to application documents directory
+      debugPrint("Directory access error: $e");
+      return await getApplicationDocumentsDirectory();
+    }
+  }
+
+  Future<void> _downloadEnquiryExcelFile() async {
+    setState(() => _isLoading = true);
+
+    try {
+      final hasPermission = await _requestFileOperationPermissions();
+      if (!hasPermission) {
+        setState(() => _isLoading = false);
         return;
       }
 
-      // ✅ Step 2: Check Storage Permission
-      final hasPermission = await FileDownloadHelper.requestStoragePermission(context);
-      if (!hasPermission) return;
+      _showToast("Downloading Excel file...");
 
-      // ✅ Step 3: Get Download Directory
-      final directory = await FileDownloadHelper.getDownloadDirectory();
+      final directory = await _getAppropriateDirectory();
       if (directory == null) {
-        Fluttertoast.showToast(
-          msg: "Unable to access storage",
-          backgroundColor: Colors.red,
-          gravity: ToastGravity.TOP,
-        );
+        _showToast("Failed to access storage directory", isError: true);
+        setState(() => _isLoading = false);
         return;
       }
 
-      // ✅ Step 4: Download File
+      final url = Uri.parse("http://13.49.224.44:8080/api/enquiry/download");
       final filename = "enquiry_list_${DateTime.now().millisecondsSinceEpoch}.xlsx";
       final downloadPath = "${directory.path}/$filename";
-      final response = await http.get(Uri.parse(downloadUrl));
+
+      final response = await http.get(url).timeout(
+        const Duration(seconds: 30),
+        onTimeout: () => throw TimeoutException("The connection timed out."),
+      );
 
       if (response.statusCode == 200) {
         final file = File(downloadPath);
         await file.writeAsBytes(response.bodyBytes);
-        await FileDownloadHelper.showFileDownloadSnackBar(context, downloadPath, Platform.isIOS);
+
+        if (Platform.isIOS) {
+          try {
+            await file.setLastModified(DateTime.now());
+          } catch (e) {
+            debugPrint("iOS file tag error: $e");
+          }
+        }
+
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text("Excel downloaded to: $downloadPath"),
+              backgroundColor: Color(0xff185794),
+              duration: const Duration(seconds: 4),
+              action: SnackBarAction(
+                label: "Open",
+                textColor: Colors.white,
+                onPressed: () async {
+                  try {
+                    await OpenFile.open(downloadPath);
+                  } catch (e) {
+                    _showToast("Unable to open file: $e", isError: true);
+                  }
+                },
+              ),
+            ),
+          );
+        }
+      } else if (response.statusCode == 401 || response.statusCode == 403) {
+        _showToast("Authorization error. Please log in again.", isError: true);
+      } else if (response.statusCode >= 500) {
+        _showToast("Server error. Please try again later.", isError: true);
       } else {
-        Fluttertoast.showToast(
-          msg: "Failed to download file: Status ${response.statusCode}",
-          backgroundColor: Colors.red,
-          gravity: ToastGravity.TOP,
-        );
+        _showToast("Download failed: ${response.statusCode}", isError: true);
       }
+    } on SocketException {
+      _showToast("Network error. Please check your internet.", isError: true);
+    } on TimeoutException {
+      _showToast("Download timed out. Please try again.", isError: true);
     } catch (e) {
-      debugPrint("Enquiry download error: $e");
-      Fluttertoast.showToast(
-        msg: "Download failed: $e",
-        backgroundColor: Colors.red,
-        gravity: ToastGravity.TOP,
-      );
+      debugPrint("Download error: $e");
+      _showToast("Unexpected error: $e", isError: true);
+    } finally {
+      setState(() => _isLoading = false);
     }
   }
 

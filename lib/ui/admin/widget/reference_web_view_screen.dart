@@ -1,7 +1,6 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:webview_flutter/webview_flutter.dart';
-import 'package:webview_flutter_android/webview_flutter_android.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:lottie/lottie.dart';
 
@@ -23,9 +22,8 @@ class _ReferenceWebViewScreenState extends State<ReferenceWebViewScreen> {
   void initState() {
     super.initState();
 
-    if (WebViewPlatform.instance is! AndroidWebViewPlatform) {
-      WebViewPlatform.instance = AndroidWebViewPlatform();
-    }
+    // Remove the platform-specific initialization that's causing issues
+    // WebViewPlatform.instance check is not needed and causes issues on iOS
 
     _initWebView();
 
@@ -41,7 +39,7 @@ class _ReferenceWebViewScreenState extends State<ReferenceWebViewScreen> {
 
     if (mounted) {
       if (currentlyConnected && !isConnected) {
-        controller.reload(); // ✅ Just reload instead of re-creating controller
+        controller.reload(); // Just reload instead of re-creating controller
       }
       setState(() => isConnected = currentlyConnected);
     }
@@ -86,15 +84,74 @@ class _ReferenceWebViewScreenState extends State<ReferenceWebViewScreen> {
         children: [
           WebViewWidget(controller: controller),
           if (loadingPercentage < 100)
-            const LinearProgressIndicator(minHeight: 4),
+            LinearProgressIndicator(
+              value: loadingPercentage / 100,
+              minHeight: 4,
+            ),
         ],
       )
           : Center(
         child: Lottie.asset(
           'assets/animations/internet.json',
-          width: 250,
+          width: 180,
         ),
       ),
     );
   }
+}
+
+// The buildInfoCard method without changes
+Widget buildInfoCard(BuildContext context, String key, String? value) {
+  if (value == null || value.trim().isEmpty || value.trim().toUpperCase() == "-NA") {
+    return const SizedBox.shrink();
+  }
+
+  final isReferenceLink = key == "Reference Link";
+
+  return Card(
+    margin: const EdgeInsets.symmetric(vertical: 6),
+    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+    elevation: 1,
+    child: ListTile(
+      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      tileColor: Colors.white.withOpacity(0.95),
+      title: Text(
+        key,
+        style: const TextStyle(
+          fontWeight: FontWeight.bold,
+          fontSize: 14,
+          color: Color(0xff185794),
+        ),
+      ),
+      subtitle: Padding(
+        padding: const EdgeInsets.only(top: 4.0),
+        child: isReferenceLink
+            ? GestureDetector(
+          onTap: () {
+            Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (_) => ReferenceWebViewScreen(url: value),
+              ),
+            );
+          },
+          child: Text(
+            value,
+            style: const TextStyle(
+              color: Colors.blue,
+              decoration: TextDecoration.underline,
+            ),
+          ),
+        )
+            : Text(
+          value,
+          style: TextStyle(
+            fontSize: 13,
+            color: Colors.grey[800],
+            height: 1.4,
+          ),
+        ),
+      ),
+    ),
+  );
 }

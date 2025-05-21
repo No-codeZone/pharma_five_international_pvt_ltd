@@ -92,34 +92,6 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
     }
   }
 
-  /*Future<void> _checkAndClearSession() async {
-    await SharedPreferenceHelper.init();
-    final isLoggedIn = await SharedPreferenceHelper.isLoggedIn();
-    final email = await SharedPreferenceHelper.getUserEmail();
-    final installationId = await SharedPreferenceHelper.getInstallationId();
-
-    // Generate a unique installation ID if it doesn't exist
-    if (installationId == null) {
-      final newInstallationId = DateTime.now().millisecondsSinceEpoch.toString();
-      await SharedPreferenceHelper.setInstallationId(newInstallationId);
-
-      // If user credentials exist but installation ID doesn't,
-      // this indicates a reinstall scenario
-      if (isLoggedIn && email != null && email.isNotEmpty) {
-        try {
-          debugPrint("App reinstalled: Logging out $email");
-          await ApiService().logoutUser(userEmail: email);
-        } catch (e) {
-          debugPrint("Logout API error: $e");
-        } finally {
-          // Clear session after logout attempt regardless of success/failure
-          await SharedPreferenceHelper.clearSession();
-          // Set the new installation ID after clearing
-          await SharedPreferenceHelper.setInstallationId(newInstallationId);
-        }
-      }
-    }
-  }*/
 
   Future<void> _checkAndClearSession() async {
     await SharedPreferenceHelper.init();

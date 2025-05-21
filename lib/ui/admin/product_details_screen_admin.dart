@@ -638,7 +638,7 @@ class _ProductDetailsScreenAdminState extends State<ProductDetailsScreenAdmin> {
                     ),
                     const SizedBox(height: 8),
                     if (p.referenceLink != null && p.referenceLink!.isNotEmpty)
-                      _buildInfoCard("Reference Link", p.referenceLink),
+                      buildInfoCard(context, "Reference Link", p.referenceLink)
                   ],
                 ),
                 ...filteredFields.map((e) => _buildInfoCard(e.key, e.value)).toList(),
