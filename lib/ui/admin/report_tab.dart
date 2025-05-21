@@ -1,8 +1,12 @@
 import 'dart:convert';
+import 'dart:io';
 import 'dart:math';
+import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter/material.dart';
+import 'package:fluttertoast/fluttertoast.dart';
 import 'package:http/http.dart' as http;
+import '../../helper/file_downloader_helper.dart';
 import '../../helper/shared_preferences.dart';
 import '../../model/login_session_model.dart';
 import '../../model/producr_search_logs_model.dart';
@@ -29,11 +33,9 @@ class _ReportTabState extends State<ReportTab> with SingleTickerProviderStateMix
   List<Sessions> _filteredSessions = [];
   late TabController _tabController;
   bool _isLoading = true;
-
   // Scroll controllers for horizontal scrolling
   final ScrollController _sessionsScrollController = ScrollController();
   final ScrollController _searchesScrollController = ScrollController();
-
   // Theme colors
   final Color _primaryColor = const Color(0xff185794);
   final Color _accentColor = const Color(0xff4a90e2);
@@ -41,7 +43,6 @@ class _ReportTabState extends State<ReportTab> with SingleTickerProviderStateMix
   final Color _cardColor = Colors.white;
   final Color _textPrimaryColor = const Color(0xff2d3748);
   final Color _textSecondaryColor = const Color(0xff718096);
-
   int _selectedDayFilter = 7;
   final Map<String, int> _dayFilters = {
     "Last 7 days": 7,
@@ -51,21 +52,12 @@ class _ReportTabState extends State<ReportTab> with SingleTickerProviderStateMix
     "All": 9999,
   };
 
-  /*@override
-  void initState() {
-    super.initState();
-    _tabController = TabController(length: 2, vsync: this);
-    _loadData();
-    _checkLoginStatus();
-  }*/
-
   @override
   void initState() {
     super.initState();
     _tabController = TabController(length: 2, vsync: this);
     _loadData();
     _checkLoginStatus();
-
     // Add listener to load search logs when tab changes
     _tabController.addListener(() {
       if (_tabController.index == 1) {
@@ -149,6 +141,74 @@ class _ReportTabState extends State<ReportTab> with SingleTickerProviderStateMix
     }
   }
 
+  Future<void> _downloadProductSearchLogExcel() async {
+    try {
+      // ✅ Step 1: Check Internet
+      final connectivityResult = await Connectivity().checkConnectivity();
+      final isConnected = connectivityResult == ConnectivityResult.mobile ||
+          connectivityResult == ConnectivityResult.wifi ||
+          connectivityResult == ConnectivityResult.ethernet;
+
+      if (!isConnected) {
+        Fluttertoast.showToast(
+          msg: "No internet connection",
+          backgroundColor: Colors.red,
+          textColor: Colors.white,
+          gravity: ToastGravity.TOP,
+          toastLength: Toast.LENGTH_LONG,
+        );
+        return;
+      }
+
+      // ✅ Step 2: Request Permission
+      final hasPermission = await FileDownloadHelper.requestStoragePermission(context);
+      if (!hasPermission) return;
+
+      // ✅ Step 3: Get Directory
+      final directory = await FileDownloadHelper.getDownloadDirectory();
+      if (directory == null) {
+        Fluttertoast.showToast(
+          msg: "Unable to access storage",
+          backgroundColor: Colors.red,
+          textColor: Colors.white,
+          gravity: ToastGravity.TOP,
+          toastLength: Toast.LENGTH_LONG,
+        );
+        return;
+      }
+
+      // ✅ Step 4: Make API Call
+      final url = Uri.parse("http://13.49.224.44:8080/api/product/search-logs?days=$_selectedDayFilter&download=true");
+      final filename = "product_search_logs_${DateTime.now().millisecondsSinceEpoch}.xlsx";
+      final filePath = "${directory.path}/$filename";
+
+      final response = await http.get(url);
+
+      if (response.statusCode == 200) {
+        final file = File(filePath);
+        await file.writeAsBytes(response.bodyBytes);
+        await FileDownloadHelper.showFileDownloadSnackBar(context, filePath, Platform.isIOS);
+      } else {
+        Fluttertoast.showToast(
+          msg: "Download failed: Status ${response.statusCode}",
+          backgroundColor: Colors.red,
+          textColor: Colors.white,
+          gravity: ToastGravity.TOP,
+          toastLength: Toast.LENGTH_LONG,
+        );
+      }
+    } catch (e) {
+      debugPrint("Download error: $e");
+      Fluttertoast.showToast(
+        msg: "Error: $e",
+        backgroundColor: Colors.red,
+        textColor: Colors.white,
+        gravity: ToastGravity.TOP,
+        toastLength: Toast.LENGTH_LONG,
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -224,7 +284,6 @@ class _ReportTabState extends State<ReportTab> with SingleTickerProviderStateMix
     );
   }
 
-
   Widget _buildContent() {
     return FutureBuilder<LoginSessionModel>(
       future: _futureSessions,
@@ -279,7 +338,7 @@ class _ReportTabState extends State<ReportTab> with SingleTickerProviderStateMix
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                Icon(Icons.info_outline, size: 48, color: _accentColor),
+                /*Icon(Icons.info_outline, size: 48, color: _accentColor),
                 const SizedBox(height: 16),
                 Text(
                   "No session data available",
@@ -288,7 +347,8 @@ class _ReportTabState extends State<ReportTab> with SingleTickerProviderStateMix
                     fontWeight: FontWeight.bold,
                     color: _textPrimaryColor,
                   ),
-                ),
+                ),*/
+                SizedBox()
               ],
             ),
           );
@@ -484,87 +544,6 @@ class _ReportTabState extends State<ReportTab> with SingleTickerProviderStateMix
     );
   }
 
-  Widget _buildMetricsRow(List<Sessions> displayedSessions, int activeSessions, int inactiveSessions, String avgDuration, int totalSessions) {
-    final metrics = [
-      {
-        "icon": Icons.people_alt_outlined,
-        "title": _filteredDayLabel != null ? "Sessions" : "Total Sessions",
-        "value": _filteredDayLabel != null ? "${displayedSessions.length} of $totalSessions" : "$totalSessions",
-        "color": _primaryColor,
-      },
-      {
-        "icon": Icons.check_circle_outline,
-        "title": "Active",
-        "value": "$activeSessions",
-        "color": Colors.green,
-      },
-      {
-        "icon": Icons.cancel_outlined,
-        "title": "Inactive",
-        "value": "$inactiveSessions",
-        "color": Colors.red[400]!,
-      },
-      {
-        "icon": Icons.timer_outlined,
-        "title": "Avg Duration",
-        "value": avgDuration,
-        "color": _accentColor,
-      },
-    ];
-
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-      child: GridView.count(
-        physics: const NeverScrollableScrollPhysics(),
-        crossAxisCount: 2,
-        shrinkWrap: true,
-        crossAxisSpacing: 12,
-        mainAxisSpacing: 12,
-        childAspectRatio: 2.5,
-        children: metrics.map((metric) {
-          return Card(
-            elevation: 5,
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    children: [
-                      Icon(metric["icon"] as IconData, color: metric["color"] as Color, size: 20),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: Text(
-                          metric["title"] as String,
-                          style: TextStyle(
-                            color: _textSecondaryColor,
-                            fontSize: 12,
-                            fontWeight: FontWeight.w500,
-                          ),
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 8),
-                  Text(
-                    metric["value"] as String,
-                    style: TextStyle(
-                      color: _textPrimaryColor,
-                      fontSize: 18,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          );
-        }).toList(),
-      ),
-    );
-  }
-
   Widget _buildMetricsGrid(List<Sessions> displayedSessions, int activeSessions,
       int inactiveSessions, String avgDuration, int totalSessions) {
     final List<Widget> metricCards = [
@@ -678,15 +657,6 @@ class _ReportTabState extends State<ReportTab> with SingleTickerProviderStateMix
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(
-              "Sessions by Day",
-              style: TextStyle(
-                fontSize: 16,
-                fontWeight: FontWeight.bold,
-                color: _textPrimaryColor,
-              ),
-            ),
-            const SizedBox(height: 16),
             Expanded(
               child: LayoutBuilder(
                   builder: (context, constraints) {
@@ -716,71 +686,76 @@ class _ReportTabState extends State<ReportTab> with SingleTickerProviderStateMix
             ),
           ],
         ),
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.all(2),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Row(
-              children: [
-                Expanded(
-                  child: Text(
-                    "Product Search Analytics",
-                    style: TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.bold,
-                      color: _textPrimaryColor,
+            Align(
+              alignment: Alignment.centerRight,
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  // Excel icon
+                  IconButton(
+                    icon: Image.asset(
+                      'assets/images/excel_icon.png',
+                      height: 24,
                     ),
+                    tooltip: 'Download Excel',
+                    onPressed: _downloadProductSearchLogExcel,
                   ),
-                ),
-                PopupMenuButton<int>(
-                  tooltip: 'Filter by Day',
-                  onSelected: (value) {
-                    setState(() {
-                      _selectedDayFilter = value;
-                      _isLoading = true;
-                    });
-                    _loadSearchLogs();
-                  },
-                  itemBuilder: (context) => _dayFilters.entries.map((entry) {
-                    return PopupMenuItem<int>(
-                      value: entry.value,
-                      child: ListTile(
-                        leading: Icon(Icons.calendar_today, color: _primaryColor, size: 20),
-                        title: Text(
-                          entry.key,
-                          style: TextStyle(fontSize: 14, color: _textPrimaryColor),
-                        ),
-                      ),
-                    );
-                  }).toList(),
-                  icon: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                    decoration: BoxDecoration(
-                      border: Border.all(color: _primaryColor),
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: Row(
-                      children: [
-                        Icon(Icons.filter_list, color: _primaryColor, size: 18),
-                        const SizedBox(width: 6),
-                        Text(
-                          _dayFilters.entries
-                              .firstWhere((e) => e.value == _selectedDayFilter)
-                              .key,
-                          style: TextStyle(
-                            fontSize: 13,
-                            color: _primaryColor,
-                            fontWeight: FontWeight.w500,
+                  const SizedBox(width: 8),
+                  // Day Filter Dropdown
+                  PopupMenuButton<int>(
+                    tooltip: 'Filter by Day',
+                    onSelected: (value) {
+                      setState(() {
+                        _selectedDayFilter = value;
+                        _isLoading = true;
+                      });
+                      _loadSearchLogs();
+                    },
+                    itemBuilder: (context) => _dayFilters.entries.map((entry) {
+                      return PopupMenuItem<int>(
+                        value: entry.value,
+                        child: ListTile(
+                          leading: Icon(Icons.calendar_today, color: _primaryColor, size: 20),
+                          title: Text(
+                            entry.key,
+                            style: TextStyle(fontSize: 14, color: _textPrimaryColor),
                           ),
                         ),
-                        const Icon(Icons.arrow_drop_down, color: Colors.black54),
-                      ],
+                      );
+                    }).toList(),
+                    icon: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                      decoration: BoxDecoration(
+                        border: Border.all(color: _primaryColor),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Row(
+                        children: [
+                          Icon(Icons.filter_list, color: _primaryColor, size: 18),
+                          const SizedBox(width: 6),
+                          Text(
+                            _dayFilters.entries
+                                .firstWhere((e) => e.value == _selectedDayFilter)
+                                .key,
+                            style: TextStyle(
+                              fontSize: 13,
+                              color: _primaryColor,
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                          const Icon(Icons.arrow_drop_down, color: Colors.black54),
+                        ],
+                      ),
                     ),
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
-            const SizedBox(height: 16),
+            const SizedBox(height: 10),
             if (_isLoading)
               Expanded(
                 child: Center(
@@ -790,9 +765,9 @@ class _ReportTabState extends State<ReportTab> with SingleTickerProviderStateMix
             else
               Expanded(
                 child: LayoutBuilder(
-                    builder: (context, constraints) {
-                      return _buildSearchLogChartFromData(logs);
-                    }
+                  builder: (context, constraints) {
+                    return _buildSearchLogChartFromData(logs);
+                  },
                 ),
               ),
           ],
@@ -807,15 +782,15 @@ class _ReportTabState extends State<ReportTab> with SingleTickerProviderStateMix
     for (var session in sessions) {
       if (session.loginTime != null) {
         final date = DateTime.parse(session.loginTime!).toLocal();
-        final label = "May ${date.day}";
+        final label = "${date.year}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}";
         sessionCountByDate[label] = (sessionCountByDate[label] ?? 0) + 1;
       }
     }
 
-    final sortedKeys = sessionCountByDate.keys.toList()
-      ..sort((a, b) => int.parse(a.split(" ")[1]).compareTo(int.parse(b.split(" ")[1])));
+    final sortedEntries = sessionCountByDate.entries.toList()
+      ..sort((a, b) => b.value.compareTo(a.value)); // Descending
 
-    if (sortedKeys.isEmpty) {
+    if (sortedEntries.isEmpty) {
       return Center(
         child: Column(
           mainAxisSize: MainAxisSize.min,
@@ -824,236 +799,106 @@ class _ReportTabState extends State<ReportTab> with SingleTickerProviderStateMix
             const SizedBox(height: 16),
             Text(
               "No session data to display",
-              style: TextStyle(
-                color: _textSecondaryColor,
-                fontSize: 16,
-              ),
+              style: TextStyle(color: _textSecondaryColor, fontSize: 16),
             ),
           ],
         ),
       );
     }
 
-    final maxY = (sessionCountByDate.values.isNotEmpty ? sessionCountByDate.values.reduce((a, b) => a > b ? a : b) : 1).toDouble();
-
-    // Calculate appropriate chart dimensions
-    double chartHeight = constraints.maxHeight - 20; // Leave some margin
-
-    // Calculate bar width based on available width
-    final availableWidth = constraints.maxWidth;
-    final minBarWidth = 36.0; // Minimum width per bar
-    final spacing = 24.0; // Space between bars
-
-    // Calculate if we need scrolling
-    final neededWidth = (sortedKeys.length * (minBarWidth + spacing));
-    final needsScrolling = neededWidth > availableWidth;
-
-    // Adjust bar width if we have few bars and don't need scrolling
-    double barWidth = needsScrolling
-        ? minBarWidth
-        : (availableWidth - (sortedKeys.length * spacing)) / sortedKeys.length;
-
-    // Make sure bar width is reasonable
-    barWidth = barWidth.clamp(24.0, 60.0);
-
-    final chartWidth = needsScrolling
-        ? sortedKeys.length * (barWidth + spacing)
-        : availableWidth;
+    final maxSessions = sortedEntries.first.value.toDouble();
+    const double barHeight = 28.0;
+    const double labelWidth = 80;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        if (needsScrolling)
-          Padding(
-            padding: const EdgeInsets.only(bottom: 8.0),
-            child: Text(
-              "Swipe horizontally to view all data",
-              style: TextStyle(
-                fontSize: 12,
-                color: _textSecondaryColor,
-                fontStyle: FontStyle.italic,
-              ),
-            ),
-          ),
         Expanded(
-          child: Scrollbar(
-            controller: _sessionsScrollController,
-            thumbVisibility: needsScrolling,
-            thickness: 6,
-            radius: const Radius.circular(10),
-            child: SingleChildScrollView(
-              controller: _sessionsScrollController,
-              scrollDirection: Axis.horizontal,
-              physics: const BouncingScrollPhysics(), // Add smooth scroll physics
-              child: SizedBox(
-                width: chartWidth,
-                height: chartHeight,
-                child: BarChart(
-                  BarChartData(
-                    alignment: BarChartAlignment.spaceAround,
-                    barTouchData: BarTouchData(
-                      enabled: true,
-                      touchTooltipData: BarTouchTooltipData(
-                        tooltipPadding: const EdgeInsets.all(8),
-                        tooltipMargin: 8,
-                        tooltipBorder: BorderSide(color: Colors.white, width: 0.5),
-                        fitInsideHorizontally: true, // Keep tooltip within horizontal bounds
-                        fitInsideVertically: true, // Keep tooltip within vertical bounds
-                        maxContentWidth: 120, // Limit tooltip width
-                        getTooltipItem: (group, groupIndex, rod, rodIndex) {
-                          return BarTooltipItem(
-                            '${sortedKeys[group.x.toInt()]}\n',
-                            const TextStyle(
-                              color: Colors.white,
-                              fontWeight: FontWeight.bold,
-                              fontSize: 14,
-                            ),
-                            children: <TextSpan>[
-                              TextSpan(
-                                text: '${rod.toY.toInt()} session(s)',
-                                style: const TextStyle(
-                                  color: Colors.white70,
-                                  fontSize: 12,
-                                  fontWeight: FontWeight.normal,
-                                ),
-                              ),
-                            ],
-                          );
-                        },
-                      ),
-                      touchCallback: (event, response) {
-                        if (event.isInterestedForInteractions && response?.spot != null) {
-                          final index = response!.spot!.touchedBarGroupIndex;
-                          if (index >= 0 && index < sortedKeys.length) {
-                            final selectedLabel = sortedKeys[index];
-                            setState(() {
-                              _touchedIndex = index;
-                              _filteredDayLabel = selectedLabel;
-                              _filteredSessions = sessions.where((s) {
-                                if (s.loginTime == null) return false;
-                                final loginDate = DateTime.parse(s.loginTime!).toLocal();
-                                return selectedLabel == "May ${loginDate.day}";
-                              }).toList();
-                            });
-                          }
-                        }
-                      },
-                    ),
-                    maxY: maxY + 1,
-                    minY: 0,
-                    barGroups: List.generate(sortedKeys.length, (index) {
-                      final key = sortedKeys[index];
-                      final value = sessionCountByDate[key] ?? 0;
-                      final isTouched = index == _touchedIndex;
+          child: ListView.builder(
+            itemCount: sortedEntries.length,
+            padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 12),
+            itemBuilder: (context, index) {
+              final entry = sortedEntries[index];
+              final dateLabel = entry.key;
+              final sessionCount = entry.value;
 
-                      return BarChartGroupData(
-                        x: index,
-                        barRods: [
-                          BarChartRodData(
-                            toY: value.toDouble(),
-                            width: isTouched ? barWidth * 1.15 : barWidth,
-                            gradient: LinearGradient(
-                              colors: [
-                                _primaryColor,
-                                _accentColor,
-                              ],
-                              begin: Alignment.bottomCenter,
-                              end: Alignment.topCenter,
-                            ),
-                            borderRadius: BorderRadius.circular(4),
-                            backDrawRodData: BackgroundBarChartRodData(
-                              show: true,
-                              toY: maxY + 1,
-                              color: Colors.grey.shade200,
-                            ),
-                          ),
-                        ],
-                      );
-                    }),
-                    titlesData: FlTitlesData(
-                      leftTitles: AxisTitles(
-                        sideTitles: SideTitles(
-                          showTitles: true,
-                          reservedSize: 28,
-                          getTitlesWidget: (value, meta) {
-                            if (value % 1 != 0) return const SizedBox.shrink(); // Only show integers
-
-                            return Padding(
-                              padding: const EdgeInsets.only(right: 8.0),
-                              child: Text(
-                                value.toInt().toString(),
-                                style: TextStyle(
-                                  color: _textSecondaryColor,
-                                  fontSize: 10,
-                                  fontWeight: FontWeight.w500,
-                                ),
-                              ),
-                            );
-                          },
+              return Padding(
+                padding: const EdgeInsets.symmetric(vertical: 4),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.center,
+                  children: [
+                    // Left: Date label
+                    SizedBox(
+                      width: labelWidth,
+                      child: Text(
+                        dateLabel,
+                        style: const TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w500,
                         ),
                       ),
-                      bottomTitles: AxisTitles(
-                        sideTitles: SideTitles(
-                          showTitles: true,
-                          getTitlesWidget: (double value, _) {
-                            final index = value.toInt();
-                            if (index >= 0 && index < sortedKeys.length) {
-                              return Padding(
-                                padding: const EdgeInsets.only(top: 8.0),
+                    ),
+
+                    // Middle: Bar with Tooltip
+                    Expanded(
+                      child: Tooltip(
+                        message: "$sessionCount sessions on $dateLabel",
+                        decoration: BoxDecoration(
+                          color: Colors.black87,
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        textStyle: const TextStyle(color: Colors.white, fontSize: 12),
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                        child: Stack(
+                          alignment: Alignment.centerLeft,
+                          children: [
+                            Container(
+                              height: barHeight,
+                              decoration: BoxDecoration(
+                                color: Colors.grey.shade200,
+                                borderRadius: BorderRadius.circular(6),
+                              ),
+                            ),
+                            FractionallySizedBox(
+                              widthFactor: sessionCount / maxSessions,
+                              child: Container(
+                                height: barHeight,
+                                decoration: BoxDecoration(
+                                  gradient: LinearGradient(
+                                    colors: [_primaryColor, _accentColor],
+                                    begin: Alignment.centerLeft,
+                                    end: Alignment.centerRight,
+                                  ),
+                                  borderRadius: BorderRadius.circular(6),
+                                ),
+                                alignment: Alignment.centerLeft,
+                                padding: const EdgeInsets.only(left: 6),
                                 child: Text(
-                                  sortedKeys[index],
-                                  style: TextStyle(
-                                    fontSize: 10,
-                                    color: _textSecondaryColor,
-                                    fontWeight: FontWeight.w500,
+                                  '$sessionCount',
+                                  style: const TextStyle(
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.w600,
+                                    color: Colors.white,
                                   ),
                                 ),
-                              );
-                            }
-                            return const SizedBox.shrink();
-                          },
-                          reservedSize: 30,
+                              ),
+                            ),
+                          ],
                         ),
                       ),
-                      rightTitles: AxisTitles(sideTitles: SideTitles(showTitles: false)),
-                      topTitles: AxisTitles(sideTitles: SideTitles(showTitles: false)),
                     ),
-                    borderData: FlBorderData(show: false),
-                    gridData: FlGridData(
-                      show: true,
-                      drawHorizontalLine: true,
-                      getDrawingHorizontalLine: (value) => FlLine(
-                        color: Colors.grey.withOpacity(0.2),
-                        strokeWidth: 1,
-                      ),
-                      drawVerticalLine: false,
-                    ),
-                  ),
-                  swapAnimationDuration: const Duration(milliseconds: 500),
-                  swapAnimationCurve: Curves.easeOutQuart,
+                  ],
                 ),
-              ),
-            ),
+              );
+            },
           ),
         ),
       ],
     );
   }
-
-// Search Log Chart - Improved
+// SEARCH CHART FIXES
   Widget _buildSearchLogChartFromData(List<ProductSearchLogsModel> logs) {
-    final List<String> labels = [];
-    final List<int> counts = [];
-
-    for (var log in logs) {
-      final name = log.search?.trim();
-      if (name != null && name.isNotEmpty && name != "NA") {
-        labels.add(name);
-        counts.add(log.count ?? 0);
-      }
-    }
-
-    if (labels.isEmpty || counts.isEmpty) {
+    if (logs.isEmpty) {
       return Center(
         child: Column(
           mainAxisSize: MainAxisSize.min,
@@ -1072,176 +917,111 @@ class _ReportTabState extends State<ReportTab> with SingleTickerProviderStateMix
       );
     }
 
-    final double maxY = counts.reduce((a, b) => a > b ? a : b).toDouble();
-    final screenWidth = MediaQuery.of(context).size.width;
-    final contentWidth = max(labels.length * 80.0, screenWidth - 64);
-    final needsScrolling = contentWidth > screenWidth - 64;
+    logs.sort((a, b) => (b.count ?? 0).compareTo(a.count ?? 0));
+    final List<int> counts = logs.map((log) => log.count ?? 0).toList();
+    final double maxCount = counts.reduce((a, b) => a > b ? a : b).toDouble();
+
+    const double barHeight = 28.0;
+    const double countLabelWidth = 50.0;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        if (needsScrolling)
-          Padding(
-            padding: const EdgeInsets.only(bottom: 8.0, left: 4.0),
-            child: Text(
-              "Swipe horizontally to view all searches",
-              style: TextStyle(
-                fontSize: 12,
-                color: _textSecondaryColor,
-                fontStyle: FontStyle.italic,
-              ),
+        const Padding(
+          padding: EdgeInsets.only(left: 12.0, top: 10, bottom: 8),
+          child: Text(
+            "TOP PRODUCT SEARCHES",
+            style: TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.bold,
+              letterSpacing: 0.3,
             ),
           ),
+        ),
         Expanded(
-          child: Scrollbar(
-            controller: _searchesScrollController,
-            thumbVisibility: needsScrolling,
-            thickness: 6,
-            radius: const Radius.circular(10),
-            child: SingleChildScrollView(
-              controller: _searchesScrollController,
-              scrollDirection: Axis.horizontal,
-              physics: const BouncingScrollPhysics(),
-              child: SizedBox(
-                width: contentWidth,
-                height: 280,
-                child: Padding(
-                  padding: const EdgeInsets.only(bottom: 10.0),
-                  child: BarChart(
-                    BarChartData(
-                      barGroups: List.generate(labels.length, (index) {
-                        final value = counts[index];
-                        final isTouched = index == _touchedIndex;
+          child: ListView.builder(
+            itemCount: logs.length,
+            padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 12),
+            itemBuilder: (context, index) {
+              final log = logs[index];
+              final count = log.count ?? 0;
+              final displayText = log.search ?? 'Unknown';
+              final truncatedText = displayText.length > 30
+                  ? '${displayText.substring(0, 30)}...'
+                  : displayText;
 
-                        return BarChartGroupData(
-                          x: index,
-                          barRods: [
-                            BarChartRodData(
-                              toY: value.toDouble(),
-                              width: isTouched ? 24 : 18,
-                              gradient: LinearGradient(
-                                colors: [_accentColor, const Color(0xff7AB0FF)],
-                                begin: Alignment.bottomCenter,
-                                end: Alignment.topCenter,
-                              ),
-                              borderRadius: BorderRadius.circular(8),
-                              backDrawRodData: BackgroundBarChartRodData(
-                                show: true,
-                                toY: maxY + 1,
-                                color: Colors.grey.shade200,
-                              ),
-                            ),
-                          ],
-                        );
-                      }),
-                      maxY: maxY + 1,
-                      barTouchData: BarTouchData(
-                        enabled: true,
-                        touchTooltipData: BarTouchTooltipData(
-                          tooltipPadding: const EdgeInsets.all(8),
-                          tooltipMargin: 8,
-                          tooltipBorder: const BorderSide(color: Colors.white, width: 0.5),
-                          fitInsideHorizontally: true,
-                          fitInsideVertically: true,
-                          maxContentWidth: 120,
-                          getTooltipItem: (group, groupIndex, rod, rodIndex) {
-                            final product = labels[group.x.toInt()];
-                            final displayName = product.length > 15
-                                ? '${product.substring(0, 15)}...'
-                                : product;
-                            return BarTooltipItem(
-                              '$displayName\n',
-                              const TextStyle(
-                                color: Colors.white,
-                                fontWeight: FontWeight.bold,
-                                fontSize: 14,
-                              ),
-                              children: [
-                                TextSpan(
-                                  text: '${rod.toY.toInt()} search(es)',
-                                  style: const TextStyle(
-                                    color: Colors.white70,
-                                    fontSize: 12,
-                                  ),
-                                ),
-                              ],
-                            );
-                          },
+              return Padding(
+                padding: const EdgeInsets.symmetric(vertical: 4),
+                child: Row(
+                  children: [
+                    // Left: Count label
+                    SizedBox(
+                      width: countLabelWidth,
+                      child: Text(
+                        count.toString(),
+                        style: const TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.bold,
                         ),
-                        touchCallback: (event, response) {
-                          setState(() {
-                            _touchedIndex = response?.spot?.touchedBarGroupIndex ?? -1;
-                          });
-                        },
+                        textAlign: TextAlign.right,
                       ),
-                      titlesData: FlTitlesData(
-                        leftTitles: AxisTitles(
-                          sideTitles: SideTitles(
-                            showTitles: true,
-                            reservedSize: 28,
-                            getTitlesWidget: (value, meta) => Padding(
-                              padding: const EdgeInsets.only(right: 8.0),
+                    ),
+                    const SizedBox(width: 10),
+
+                    // Right: Bar with tooltip
+                    Expanded(
+                      child:
+                      Tooltip(
+                        message: "$count search${count != 1 ? 'es' : ''} for \"$displayText\"",
+                        preferBelow: false, // Tooltip appears above the bar
+                        verticalOffset: 20, // Distance between bar and tooltip
+                        waitDuration: const Duration(milliseconds: 300), // Delay before showing
+                        showDuration: const Duration(seconds: 3), // Visible duration
+                        decoration: BoxDecoration(
+                          color: Colors.black87,
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        textStyle: const TextStyle(color: Colors.white, fontSize: 12),
+                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                        child: Container(
+                          height: barHeight,
+                          decoration: BoxDecoration(
+                            color: Colors.grey.shade200,
+                            borderRadius: BorderRadius.circular(6),
+                          ),
+                          child: FractionallySizedBox(
+                            widthFactor: count / maxCount,
+                            alignment: Alignment.centerLeft,
+                            child: Container(
+                              height: barHeight,
+                              decoration: BoxDecoration(
+                                gradient: LinearGradient(
+                                  colors: [_accentColor, const Color(0xff7AB0FF)],
+                                  begin: Alignment.centerLeft,
+                                  end: Alignment.centerRight,
+                                ),
+                                borderRadius: BorderRadius.circular(6),
+                              ),
+                              alignment: Alignment.centerLeft,
+                              padding: const EdgeInsets.symmetric(horizontal: 8),
                               child: Text(
-                                value.toInt().toString(),
-                                style: TextStyle(
-                                  color: _textSecondaryColor,
-                                  fontSize: 10,
-                                  fontWeight: FontWeight.w500,
+                                truncatedText,
+                                style: const TextStyle(
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.w600,
+                                  color: Colors.white,
                                 ),
+                                overflow: TextOverflow.ellipsis,
                               ),
                             ),
                           ),
-                        ),
-                        bottomTitles: AxisTitles(
-                          sideTitles: SideTitles(
-                            showTitles: true,
-                            reservedSize: 60,
-                            getTitlesWidget: (value, meta) {
-                              final index = value.toInt();
-                              if (index >= 0 && index < labels.length) {
-                                final label = labels[index];
-                                return Padding(
-                                  padding: const EdgeInsets.only(top: 4),
-                                  child: Transform.rotate(
-                                    angle: -0.7,
-                                    alignment: Alignment.topRight,
-                                    child: Container(
-                                      constraints: const BoxConstraints(maxWidth: 80),
-                                      child: Text(
-                                        label.length > 12 ? '${label.substring(0, 12)}...' : label,
-                                        style: TextStyle(
-                                          fontSize: 10,
-                                          color: _textSecondaryColor,
-                                          fontWeight: FontWeight.w500,
-                                        ),
-                                        overflow: TextOverflow.ellipsis,
-                                        maxLines: 1,
-                                      ),
-                                    ),
-                                  ),
-                                );
-                              }
-                              return const SizedBox.shrink();
-                            },
-                          ),
-                        ),
-                        topTitles: AxisTitles(sideTitles: SideTitles(showTitles: false)),
-                        rightTitles: AxisTitles(sideTitles: SideTitles(showTitles: false)),
-                      ),
-                      borderData: FlBorderData(show: false),
-                      gridData: FlGridData(
-                        show: true,
-                        drawHorizontalLine: true,
-                        getDrawingHorizontalLine: (value) => FlLine(
-                          color: Colors.grey.withOpacity(0.2),
-                          strokeWidth: 1,
                         ),
                       ),
                     ),
-                  ),
+                  ],
                 ),
-              ),
-            ),
+              );
+            },
           ),
         ),
       ],
@@ -1266,36 +1046,7 @@ class _ReportTabState extends State<ReportTab> with SingleTickerProviderStateMix
     return Duration(seconds: avg).toString().split('.').first;
   }
 
-  Future<void> debugPrintResponse() async {
-    try {
-      final url = Uri.parse("${_apiService.baseUrl}${_apiService.loginSessionAPI}");
-      final response = await http.get(url);
-
-      print("=== DEBUG RESPONSE ===");
-      print("Status Code: ${response.statusCode}");
-      print("Raw Response: ${response.body}");
-
-      try {
-        final json = jsonDecode(response.body);
-        print("JSON Keys: ${json is Map ? json.keys.toList() : 'Not a Map'}");
-        if (json is Map && json['sessions'] != null) {
-          print("Sessions found, count: ${json['sessions'] is List ? json['sessions'].length : 'Not a List'}");
-        } else if (json is List) {
-          print("Response is a List with ${json.length} items");
-          if (json.isNotEmpty && json.first is Map) {
-            print("First item keys: ${json.first.keys.toList()}");
-          }
-        }
-      } catch (e) {
-        print("Error parsing JSON: $e");
-      }
-      print("=== END DEBUG ===");
-    } catch (e) {
-      print("Debug request failed: $e");
-    }
-  }
-
-    void _showLogoutDialog() {
+  void _showLogoutDialog() {
     showDialog(
       context: context,
       builder: (BuildContext context) {

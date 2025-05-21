@@ -44,7 +44,7 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
     InternetConnection().hasInternetAccess.then((connected) {
       if (!connected) {
         _wasDisconnected = true;
-        _showToast("No internet connection", isError: true);
+        // _showToast("No internet connection", isError: true);
       }
     });
 
@@ -52,15 +52,13 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
     _connectionSubscription = InternetConnection().onStatusChange.listen((status) {
       if (status == InternetStatus.disconnected) {
         _wasDisconnected = true;
-        _showToast("Internet disconnected", isError: true);
+        // _showToast("Internet disconnected", isError: true);
       } else if (_wasDisconnected) {
         _wasDisconnected = false;
-        _showToast("Internet connected");
+        // _showToast("Internet connected");
       }
     });
   }
-
-
 
   void _showToast(String message, {bool isError = false}) {
     Fluttertoast.showToast(
@@ -90,22 +88,33 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
     });
   }
 
-  Future<Map<String, dynamic>?> _sendOTPApi({required String email}) async {
+  Future<Map<String, dynamic>?> _sendOTPApi({
+    required String email,
+    required String newPassword,
+  }) async {
     final url = Uri.parse('${ApiService().baseUrl}${ApiService().sendOTPAPI}');
+
     try {
       final response = await http.post(
         url,
         headers: {'Content-Type': 'application/json'},
-        body: jsonEncode({"email": email}),
+        body: jsonEncode({
+          "email": email,
+          "newPassword": newPassword, // Add newPassword to request body
+        }),
       );
 
       final data = jsonDecode(response.body);
+
       return {
         'success': data['success'] ?? false,
         'message': data['message'] ?? "OTP send failed.",
       };
     } catch (_) {
-      return {'success': false, 'message': "An error occurred. Please try again."};
+      return {
+        'success': false,
+        'message': "An error occurred. Please try again.",
+      };
     }
   }
 
@@ -113,7 +122,8 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
     if (_formKey.currentState!.validate()) {
       setState(() => _isSubmitting = true);
       final email = _emailController.text.trim();
-      final result = await _sendOTPApi(email: email);
+      final password = _newPasswordController.text.trim();
+      final result = await _sendOTPApi(email: email,newPassword: password);
       setState(() => _isSubmitting = false);
 
       if (result?['success'] == true) {
@@ -130,6 +140,17 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
       }
     }
   }
+
+  bool _isFormValid() {
+    final emailValid = _emailController.text.trim().isNotEmpty &&
+        RegExp(r'^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$').hasMatch(_emailController.text.trim());
+
+    final password = _newPasswordController.text.trim();
+    final confirmPassword = _confirmPasswordController.text.trim();
+
+    return emailValid && password.length >= 8 && password == confirmPassword;
+  }
+
 
   Future<void> _verifyOTP() async {
     if (_formKey.currentState!.validate() && _otpController.text.length == 6) {
@@ -295,7 +316,7 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
                         ? null
                         : _isOtpSent
                         ? (_isOtpValid ? _verifyOTP : null)
-                        : _sendOTP,
+                        : (_isFormValid() ? _sendOTP : null),
                     style: ElevatedButton.styleFrom(
                       backgroundColor: const Color(0xff185794),
                       foregroundColor: Colors.white,

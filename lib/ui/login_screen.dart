@@ -52,7 +52,7 @@ class _LoginScreenState extends State<LoginScreen> {
     InternetConnection().hasInternetAccess.then((connected) {
       if (!connected) {
         _wasDisconnected = true;
-        _showToast("No internet connection", isError: true);
+        // _showToast("No internet connection", isError: true);
       }
     });
 
@@ -60,11 +60,11 @@ class _LoginScreenState extends State<LoginScreen> {
     InternetConnection().onStatusChange.listen((status) {
       if (status == InternetStatus.disconnected) {
         _wasDisconnected = true;
-        _showToast("Internet disconnected", isError: true);
+        // _showToast("Internet disconnected", isError: true);
       } else if (_wasDisconnected) {
         // Only show the "connected" toast if previously disconnected
         _wasDisconnected = false;
-        _showToast("Internet connected");
+        // _showToast("Internet connected");
       }
     });
   }

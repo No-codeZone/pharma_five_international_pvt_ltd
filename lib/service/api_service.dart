@@ -814,24 +814,27 @@ class ApiService {
     }
   }
 
-  ///Fetch searched product new API
-  Future<GetProductSearchResponseModel?> searchProducts(String searchTerm) async {
+  ///Fetch searched product new API GetProductSearchResponseModel
+  Future<GetProductSearchResponseModel?> searchProducts(String searchTerm, {int index = 0, int limit = 10}) async {
     try {
       final response = await http.get(
-        Uri.parse('$baseUrlProduct/product/list?search=$searchTerm'),
+        Uri.parse('$baseUrlProduct/product/list?search=$searchTerm&index=$index&limit=$limit'),
+        headers: {"Content-Type": "application/json"},
       );
 
       if (response.statusCode == 200) {
-        return GetProductSearchResponseModel.fromJson(json.decode(response.body));
+        final decoded = jsonDecode(response.body);
+        return GetProductSearchResponseModel.fromJson(decoded);
       } else {
-        print('Failed to search products. Status: ${response.statusCode}');
+        debugPrint("Search failed: ${response.statusCode}");
         return null;
       }
     } catch (e) {
-      print('Exception in searchProducts: $e');
+      debugPrint("Error searching products: $e");
       return null;
     }
   }
+
 
   ///Enquiry product API
   Future<ResponseEnquiryModel?> submitEnquiry(RequestEnquiryModel model) async {

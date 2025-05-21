@@ -39,6 +39,7 @@ class _ProductDetailsScreenAdminState extends State<ProductDetailsScreenAdmin> {
       Future<void> Function()? onExpand, Widget content) {
     return Card(
       elevation: 2,
+      color: Colors.white,
       margin: const EdgeInsets.symmetric(vertical: 10),
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
       child: ExpansionTile(
@@ -462,6 +463,7 @@ class _ProductDetailsScreenAdminState extends State<ProductDetailsScreenAdmin> {
 
     return Card(
       elevation: 2,
+      color: Colors.white,
       margin: const EdgeInsets.symmetric(vertical: 10),
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
       child: ExpansionTile(
@@ -530,8 +532,8 @@ class _ProductDetailsScreenAdminState extends State<ProductDetailsScreenAdmin> {
                     const SizedBox(height: 8),
 
                     // Reference Link Section - Moved above Summary and styled in a box
-                    if (p.referenceLink != null && p.referenceLink!.isNotEmpty)
-                      _buildInfoCard("Reference Link", p.referenceLink),
+                    // if (p.referenceLink != null && p.referenceLink!.isNotEmpty)
+                    //   _buildInfoCard("Reference Link", p.referenceLink),
                     if (p.indication != null && p.indication!.isNotEmpty)
                       Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
@@ -634,7 +636,9 @@ class _ProductDetailsScreenAdminState extends State<ProductDetailsScreenAdmin> {
                         ],
                       ),
                     ),
-                    const SizedBox(height: 16),
+                    const SizedBox(height: 8),
+                    if (p.referenceLink != null && p.referenceLink!.isNotEmpty)
+                      _buildInfoCard("Reference Link", p.referenceLink),
                   ],
                 ),
                 ...filteredFields.map((e) => _buildInfoCard(e.key, e.value)).toList(),
@@ -1004,7 +1008,9 @@ class _ProductDetailsScreenAdminState extends State<ProductDetailsScreenAdmin> {
 
             // Table Body
             Container(
-              height: 300,
+              constraints: BoxConstraints(
+                maxHeight: items.length <= 5 ? double.infinity : 300, // Allow natural height if few items
+              ),
               decoration: BoxDecoration(
                 borderRadius: BorderRadius.circular(8),
                 border: Border.all(color: Colors.grey.shade300, width: 1),
@@ -1013,6 +1019,7 @@ class _ProductDetailsScreenAdminState extends State<ProductDetailsScreenAdmin> {
                 borderRadius: BorderRadius.circular(8),
                 child: ListView.builder(
                   itemCount: items.length,
+                  shrinkWrap: true,
                   physics: const ClampingScrollPhysics(),
                   itemBuilder: (context, index) {
                     final b = items[index];

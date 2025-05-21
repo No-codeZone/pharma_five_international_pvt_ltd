@@ -40,6 +40,7 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen> {
       Future<void> Function()? onExpand, Widget content) {
     return Card(
       elevation: 2,
+      color: Colors.white,
       margin: const EdgeInsets.symmetric(vertical: 10),
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
       child: ExpansionTile(
@@ -520,6 +521,7 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen> {
 
     return Card(
       elevation: 2,
+      color: Colors.white,
       margin: const EdgeInsets.symmetric(vertical: 10),
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
       child: ExpansionTile(
@@ -586,8 +588,8 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen> {
                     const SizedBox(height: 12),
                     const Divider(),
                     const SizedBox(height: 8),
-                    if (p.indication != null && p.indication!.isNotEmpty)
-                      _buildInfoCard("Reference Link", p.referenceLink),
+                    // if (p.indication != null && p.indication!.isNotEmpty)
+                    //   _buildInfoCard("Reference Link", p.referenceLink),
                     if (p.manufacturedBy != null && p.manufacturedBy!.isNotEmpty)
                       Row(
                         children: [
@@ -670,7 +672,10 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen> {
                         ],
                       ),
                     ),
-                    const SizedBox(height: 16),
+                    const SizedBox(height: 8),
+                    if (p.indication != null && p.indication!.isNotEmpty)
+                      _buildInfoCard("Reference Link", p.referenceLink),
+                    // const SizedBox(height: 3),
                   ],
                 ),
                 ...filteredFields.map((e) => _buildInfoCard(e.key, e.value)).toList(),
@@ -1040,7 +1045,9 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen> {
 
             // Table Body
             Container(
-              height: 300,
+              constraints: BoxConstraints(
+                maxHeight: items.length <= 5 ? double.infinity : 300, // Allow natural height if few items
+              ),
               decoration: BoxDecoration(
                 borderRadius: BorderRadius.circular(8),
                 border: Border.all(color: Colors.grey.shade300, width: 1),
