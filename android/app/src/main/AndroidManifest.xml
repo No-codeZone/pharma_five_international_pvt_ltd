@@ -26,7 +26,7 @@
     <application
         android:label="Pharma Five"
         android:name="${applicationName}"
-        android:icon="@drawable/logo_pf">
+        android:icon="@mipmap/ic_launcher">
         <activity
             android:name=".MainActivity"
             android:exported="true"
