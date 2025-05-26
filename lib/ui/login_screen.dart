@@ -285,7 +285,15 @@ class _LoginScreenState extends State<LoginScreen> {
                           color: Colors.black),
                     ),
                     const SizedBox(height: 16),
-
+                    Text(
+                      "One Place One Press",
+                      style: TextStyle(
+                        fontSize: 14,
+                        color: Colors.black54,
+                        // color: Color(0xffacaeaf),
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
                     // const Text(
                     //   'Ask Pharma Five',
                     //   style: TextStyle(fontSize: 14, color: Colors.black54),

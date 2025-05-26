@@ -250,16 +250,16 @@ class _InfoScreenState extends State<InfoScreen>
                 const Icon(Icons.local_pharmacy, size: 40, color: Colors.blue),
               ),
             ),
-            const Center(
-              child: Text(
-                "Information",
-                style: TextStyle(
-                  fontSize: 20,
-                  fontWeight: FontWeight.bold,
-                  color: Colors.black,
-                ),
-              ),
-            ),
+            // const Center(
+            //   child: Text(
+            //     "Information",
+            //     style: TextStyle(
+            //       fontSize: 20,
+            //       fontWeight: FontWeight.bold,
+            //       color: Colors.black,
+            //     ),
+            //   ),
+            // ),
           ],
         ),
       ),
@@ -284,17 +284,17 @@ class _InfoScreenState extends State<InfoScreen>
                 ),
               ),
             ),
-            const Align(
-              alignment: Alignment.center,
-              child: Text(
-                "Information",
-                style: TextStyle(
-                  fontSize: 20,
-                  fontWeight: FontWeight.bold,
-                  color: Colors.black,
-                ),
-              ),
-            ),
+            // const Align(
+            //   alignment: Alignment.center,
+            //   child: Text(
+            //     "Information",
+            //     style: TextStyle(
+            //       fontSize: 20,
+            //       fontWeight: FontWeight.bold,
+            //       color: Colors.black,
+            //     ),
+            //   ),
+            // ),
           ],
         ),
       ),
@@ -516,12 +516,15 @@ class _InfoScreenState extends State<InfoScreen>
   }
 
   Widget _buildSectionTitle(String text) {
-    return Text(
-      text,
-      style: const TextStyle(
-        fontSize: 20,
-        fontWeight: FontWeight.bold,
-        color: Color(0xff185794),
+    return Align(
+      alignment: Alignment.center,
+      child: Text(
+        text,
+        style: const TextStyle(
+          fontSize: 20,
+          fontWeight: FontWeight.bold,
+          color: Color(0xff185794),
+        ),
       ),
     );
   }

@@ -2,11 +2,9 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'dart:math';
-import 'dart:typed_data';
-import 'package:share_plus/share_plus.dart';
+
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:device_info_plus/device_info_plus.dart';
-import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:fluttertoast/fluttertoast.dart';
 import 'package:http/http.dart' as http;
@@ -15,17 +13,12 @@ import 'package:open_file/open_file.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:pharma_five/ui/login_screen.dart';
-import 'package:share_plus/share_plus.dart';
+import 'package:url_launcher/url_launcher.dart';
 
-import '../../helper/file_downloader_helper.dart';
 import '../../helper/shared_preferences.dart';
-import '../../model/get_product_search_model.dart';
 import '../../model/product_search_listing_response_model.dart';
-import '../../model/update_product_listing_request_model.dart';
 import '../../service/api_service.dart';
-import '../admin/edit_full_product_screen.dart';
 import '../admin/product_details_screen.dart';
-import '../admin_approval_screen.dart';
 
 class UserDashboardScreen extends StatefulWidget {
   const UserDashboardScreen({Key? key}) : super(key: key);
@@ -56,10 +49,13 @@ class _UserDashboardScreenState extends State<UserDashboardScreen>
   String? _selectedMedicalField;
   final Connectivity _connectivity = Connectivity();
   late StreamSubscription<List<ConnectivityResult>> _connectivitySubscription;
-  ApiService apiService=ApiService();
+  ApiService apiService = ApiService();
   bool _lastConnectionStatus = true;
+
   // Key for product list refresh
-  final GlobalKey<RefreshIndicatorState> _refreshIndicatorKey = GlobalKey<RefreshIndicatorState>();
+  final GlobalKey<RefreshIndicatorState> _refreshIndicatorKey =
+      GlobalKey<RefreshIndicatorState>();
+
   @override
   void initState() {
     super.initState();
@@ -67,28 +63,30 @@ class _UserDashboardScreenState extends State<UserDashboardScreen>
     _validateUserAndLoadData();
     _startConnectivityListener();
   }
+
   void _startConnectivityListener() {
     _connectivitySubscription =
         _connectivity.onConnectivityChanged.listen((results) async {
-          final connected = results.contains(ConnectivityResult.mobile) ||
-              results.contains(ConnectivityResult.wifi) ||
-              results.contains(ConnectivityResult.ethernet);
+      final connected = results.contains(ConnectivityResult.mobile) ||
+          results.contains(ConnectivityResult.wifi) ||
+          results.contains(ConnectivityResult.ethernet);
 
-          if (_lastConnectionStatus != connected) {
-            setState(() {
-              _isConnected = connected;
-              _lastConnectionStatus = connected;
-            });
-            if (connected) {
-              if (_selectedMedicalField != null) {
-                await _loadProductsByField(_selectedMedicalField!);
-              } else {
-                await _loadProductData(page: _currentPage);
-              }
-            }
-          }
+      if (_lastConnectionStatus != connected) {
+        setState(() {
+          _isConnected = connected;
+          _lastConnectionStatus = connected;
         });
+        if (connected) {
+          if (_selectedMedicalField != null) {
+            await _loadProductsByField(_selectedMedicalField!);
+          } else {
+            await _loadProductData(page: _currentPage);
+          }
+        }
+      }
+    });
   }
+
   Future<bool> _checkInternetConnectivity() async {
     try {
       final result = await InternetAddress.lookup('google.com');
@@ -97,6 +95,7 @@ class _UserDashboardScreenState extends State<UserDashboardScreen>
       return false;
     }
   }
+
   Future<void> _validateUserAndLoadData() async {
     setState(() {
       _isLoading = true;
@@ -191,6 +190,7 @@ class _UserDashboardScreenState extends State<UserDashboardScreen>
       }
     }
   }
+
   void _showToast(String message, {bool isError = false}) {
     Fluttertoast.showToast(
       msg: message,
@@ -202,6 +202,7 @@ class _UserDashboardScreenState extends State<UserDashboardScreen>
       timeInSecForIosWeb: 3,
     );
   }
+
   Future<void> _searchProductsFromApi(String searchTerm, {int page = 0}) async {
     if (searchTerm.trim().isEmpty) {
       _loadProductData(page: 0);
@@ -214,7 +215,7 @@ class _UserDashboardScreenState extends State<UserDashboardScreen>
     });
 
     try {
-      String searchProduct=apiService.baseUrlProduct;
+      String searchProduct = apiService.baseUrlProduct;
       final response = await http.get(Uri.parse(
           '$searchProduct/product/list?search=$searchTerm&index=$page&limit=$_itemsPerPage'));
 
@@ -223,11 +224,13 @@ class _UserDashboardScreenState extends State<UserDashboardScreen>
         final List productsJson = data['products'] ?? [];
         final int total = data['totalCount'] ?? productsJson.length;
 
-        final List<Products> converted = productsJson.map((p) => Products(
-          serialNo: p['serialNo'],
-          medicineName: p['medicineName'],
-          genericName: p['genericName'],
-        )).toList();
+        final List<Products> converted = productsJson
+            .map((p) => Products(
+                  serialNo: p['serialNo'],
+                  medicineName: p['medicineName'],
+                  genericName: p['genericName'],
+                ))
+            .toList();
 
         setState(() {
           _allProducts = converted;
@@ -250,6 +253,7 @@ class _UserDashboardScreenState extends State<UserDashboardScreen>
       });
     }
   }
+
   Future<void> _loadProductsByField(String field, {int page = 0}) async {
     setState(() {
       _isProductsLoading = true;
@@ -260,22 +264,24 @@ class _UserDashboardScreenState extends State<UserDashboardScreen>
     try {
       final response = await ApiService().fetchProductsByField(
         field: field,
-        index: page,  // Use the provided page parameter
+        index: page, // Use the provided page parameter
         limit: _itemsPerPage,
       );
 
       if (response != null && response.fieldProducts != null) {
-        final converted = response.fieldProducts!.map((f) => Products(
-          serialNo: f.serialNo,
-          medicineName: f.medicineName,
-          genericName: f.genericName,
-        )).toList();
+        final converted = response.fieldProducts!
+            .map((f) => Products(
+                  serialNo: f.serialNo,
+                  medicineName: f.medicineName,
+                  genericName: f.genericName,
+                ))
+            .toList();
 
         setState(() {
           _allProducts = converted;
           _filteredProducts = converted;
           _totalProductCount = response.totalCount ?? converted.length;
-          _currentPage = page;  // Update current page
+          _currentPage = page; // Update current page
           _hasMore = ((page + 1) * _itemsPerPage) < _totalProductCount;
           _isProductsLoading = false;
         });
@@ -294,6 +300,7 @@ class _UserDashboardScreenState extends State<UserDashboardScreen>
       });
     }
   }
+
   Future<bool> _requestFileOperationPermissions() async {
     // Check current connection first
     if (!_isConnected) {
@@ -308,10 +315,12 @@ class _UserDashboardScreenState extends State<UserDashboardScreen>
       return await _requestIOSPermissions();
     } else {
       // Default fallback for other platforms
-      _showToast("File operations may not be fully supported on this platform", isError: true);
+      _showToast("File operations may not be fully supported on this platform",
+          isError: true);
       return true;
     }
   }
+
   Future<bool> _requestAndroidPermissions() async {
     final deviceInfo = DeviceInfoPlugin();
     final androidInfo = await deviceInfo.androidInfo;
@@ -328,16 +337,16 @@ class _UserDashboardScreenState extends State<UserDashboardScreen>
         return true;
       }
 
-      if (photosStatus.isPermanentlyDenied || documentsStatus.isPermanentlyDenied) {
-        _showPermissionSettingsDialog(
-            "Media access required",
-            "Access to photos and documents is required for importing and exporting Excel files."
-        );
+      if (photosStatus.isPermanentlyDenied ||
+          documentsStatus.isPermanentlyDenied) {
+        _showPermissionSettingsDialog("Media access required",
+            "Access to photos and documents is required for importing and exporting Excel files.");
         return false;
       }
 
       if (photosStatus.isDenied || documentsStatus.isDenied) {
-        _showToast("Media permissions are required for Excel operations", isError: true);
+        _showToast("Media permissions are required for Excel operations",
+            isError: true);
         return false;
       }
     }
@@ -360,17 +369,14 @@ class _UserDashboardScreenState extends State<UserDashboardScreen>
               "Storage access limited",
               "For full access to manage files, additional permissions are needed. " +
                   "Excel files will be saved to app-specific folders.",
-              isWarningOnly: true
-          );
+              isWarningOnly: true);
         }
         return true;
       }
 
       if (storageStatus.isPermanentlyDenied) {
-        _showPermissionSettingsDialog(
-            "Storage access required",
-            "Storage access is required for importing and exporting Excel files."
-        );
+        _showPermissionSettingsDialog("Storage access required",
+            "Storage access is required for importing and exporting Excel files.");
         return false;
       }
     }
@@ -383,17 +389,17 @@ class _UserDashboardScreenState extends State<UserDashboardScreen>
       }
 
       if (status.isPermanentlyDenied) {
-        _showPermissionSettingsDialog(
-            "Storage access required",
-            "Storage access is required for importing and exporting Excel files."
-        );
+        _showPermissionSettingsDialog("Storage access required",
+            "Storage access is required for importing and exporting Excel files.");
         return false;
       }
     }
 
-    _showToast("Storage permissions are needed for Excel operations", isError: true);
+    _showToast("Storage permissions are needed for Excel operations",
+        isError: true);
     return false;
   }
+
   Future<bool> _requestIOSPermissions() async {
     final documentsStatus = await Permission.storage.request();
 
@@ -402,17 +408,18 @@ class _UserDashboardScreenState extends State<UserDashboardScreen>
     }
 
     if (documentsStatus.isPermanentlyDenied) {
-      _showPermissionSettingsDialog(
-          "Storage access required",
-          "This app needs permission to store Excel files in your device's Documents directory."
-      );
+      _showPermissionSettingsDialog("Storage access required",
+          "This app needs permission to store Excel files in your device's Documents directory.");
       return false;
     }
 
-    _showToast("Storage permission is required for Excel file operations.", isError: true);
+    _showToast("Storage permission is required for Excel file operations.",
+        isError: true);
     return false;
   }
-  void _showPermissionSettingsDialog(String title, String message, {bool isWarningOnly = false}) {
+
+  void _showPermissionSettingsDialog(String title, String message,
+      {bool isWarningOnly = false}) {
     final ThemeData theme = Theme.of(context);
     final Color primaryColor = const Color(0xff185794);
 
@@ -422,7 +429,8 @@ class _UserDashboardScreenState extends State<UserDashboardScreen>
       builder: (BuildContext context) => AlertDialog(
         backgroundColor: Colors.white,
         shape: RoundedRectangleBorder(
-          borderRadius: const BorderRadius.vertical(top: Radius.circular(10), bottom: Radius.circular(10)),
+          borderRadius: const BorderRadius.vertical(
+              top: Radius.circular(10), bottom: Radius.circular(10)),
           side: BorderSide(color: Colors.grey.shade300),
         ),
         title: Text(
@@ -549,10 +557,12 @@ class _UserDashboardScreenState extends State<UserDashboardScreen>
             ],
           ),
         ],
-        actionsPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+        actionsPadding:
+            const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
       ),
     );
   }
+
   Future<Directory?> _getAppropriateDirectory() async {
     Directory? directory;
 
@@ -596,6 +606,7 @@ class _UserDashboardScreenState extends State<UserDashboardScreen>
       return await getApplicationDocumentsDirectory();
     }
   }
+
   Future<void> _downloadExcelFile() async {
     setState(() => _isLoading = true);
 
@@ -616,13 +627,15 @@ class _UserDashboardScreenState extends State<UserDashboardScreen>
       }
 
       final url = Uri.parse("http://13.49.224.44:8080/api/product/download");
-      final filename = "product_list_${DateTime.now().millisecondsSinceEpoch}.xlsx";
+      final filename =
+          "product_list_${DateTime.now().millisecondsSinceEpoch}.xlsx";
       final downloadPath = "${directory.path}/$filename";
 
       final response = await http.get(url).timeout(
-        const Duration(seconds: 30),
-        onTimeout: () => throw TimeoutException("The connection timed out."),
-      );
+            const Duration(seconds: 30),
+            onTimeout: () =>
+                throw TimeoutException("The connection timed out."),
+          );
 
       if (response.statusCode == 200) {
         final file = File(downloadPath);
@@ -674,10 +687,12 @@ class _UserDashboardScreenState extends State<UserDashboardScreen>
       setState(() => _isLoading = false);
     }
   }
+
   String _getCurrentTimeFormatted() {
     final now = DateTime.now();
     return '${now.hour}:${now.minute.toString().padLeft(2, '0')}';
   }
+
   Future<void> _loadProductData({int page = 0}) async {
     setState(() {
       _isProductsLoading = true;
@@ -692,7 +707,8 @@ class _UserDashboardScreenState extends State<UserDashboardScreen>
 
       if (response != null && response.getProducts != null) {
         // Convert GetProducts to Products
-        List<Products> convertedProducts = response.getProducts!.map((getProduct) {
+        List<Products> convertedProducts =
+            response.getProducts!.map((getProduct) {
           return Products(
             serialNo: getProduct.serialNo,
             medicineName: getProduct.medicineName,
@@ -724,6 +740,7 @@ class _UserDashboardScreenState extends State<UserDashboardScreen>
       });
     }
   }
+
   void _navigateToLogin() {
     SharedPreferenceHelper.clearSession().then((_) {
       Navigator.pushReplacement(
@@ -732,6 +749,7 @@ class _UserDashboardScreenState extends State<UserDashboardScreen>
       );
     });
   }
+
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
@@ -739,12 +757,14 @@ class _UserDashboardScreenState extends State<UserDashboardScreen>
     _searchController.dispose();
     super.dispose();
   }
+
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
       _validateUserAndLoadData();
     }
   }
+
   Future<void> _logout() async {
     try {
       final email = await SharedPreferenceHelper.getUserEmail();
@@ -756,7 +776,7 @@ class _UserDashboardScreenState extends State<UserDashboardScreen>
       Navigator.pushAndRemoveUntil(
         context,
         MaterialPageRoute(builder: (context) => const LoginScreen()),
-            (route) => false,
+        (route) => false,
       );
     } catch (e) {
       debugPrint('Logout failed: $e');
@@ -765,6 +785,7 @@ class _UserDashboardScreenState extends State<UserDashboardScreen>
       );
     }
   }
+
   Widget _buildPagination() {
     if (_filteredProducts.isEmpty && _currentPage == 0) {
       return const SizedBox.shrink(); // No pagination needed
@@ -774,7 +795,8 @@ class _UserDashboardScreenState extends State<UserDashboardScreen>
     final int totalPages = (_totalProductCount / itemsPerPage).ceil();
     const int maxPagesToShow = 7; // ✅ Show fewer pages to avoid overflow
 
-    int startPage = max(0, min(_currentPage - (maxPagesToShow ~/ 2), totalPages - maxPagesToShow));
+    int startPage = max(0,
+        min(_currentPage - (maxPagesToShow ~/ 2), totalPages - maxPagesToShow));
     int endPage = min(startPage + maxPagesToShow - 1, totalPages - 1);
 
     // ✅ Slightly smaller, fixed-size buttons and font
@@ -790,7 +812,8 @@ class _UserDashboardScreenState extends State<UserDashboardScreen>
           children: [
             // Previous Button
             if (_currentPage > 0)
-              _buildPageArrow(isNext: false, fontSize: fontSize, buttonSize: buttonSize),
+              _buildPageArrow(
+                  isNext: false, fontSize: fontSize, buttonSize: buttonSize),
 
             // Page Numbers
             ...List.generate(endPage - startPage + 1, (index) {
@@ -803,9 +826,12 @@ class _UserDashboardScreenState extends State<UserDashboardScreen>
                   onTap: () {
                     if (_currentPage != pageNumber) {
                       if (_searchController.text.trim().isNotEmpty) {
-                        _searchProductsFromApi(_searchController.text.trim(), page: pageNumber);
-                      } else if (_selectedMedicalField != null && _selectedMedicalField != 'All') {
-                        _loadProductsByField(_selectedMedicalField!, page: pageNumber);
+                        _searchProductsFromApi(_searchController.text.trim(),
+                            page: pageNumber);
+                      } else if (_selectedMedicalField != null &&
+                          _selectedMedicalField != 'All') {
+                        _loadProductsByField(_selectedMedicalField!,
+                            page: pageNumber);
                       } else {
                         _loadProductData(page: pageNumber);
                       }
@@ -818,15 +844,16 @@ class _UserDashboardScreenState extends State<UserDashboardScreen>
                     alignment: Alignment.center,
                     decoration: isSelected
                         ? BoxDecoration(
-                      color: const Color(0xff185794).withOpacity(0.1),
-                      borderRadius: BorderRadius.circular(6),
-                    )
+                            color: const Color(0xff185794).withOpacity(0.1),
+                            borderRadius: BorderRadius.circular(6),
+                          )
                         : null,
                     child: Text(
                       '${pageNumber + 1}',
                       style: TextStyle(
                         fontSize: fontSize,
-                        fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+                        fontWeight:
+                            isSelected ? FontWeight.bold : FontWeight.normal,
                         color: const Color(0xff185794),
                       ),
                     ),
@@ -837,19 +864,25 @@ class _UserDashboardScreenState extends State<UserDashboardScreen>
 
             // Next Button
             if (((_currentPage + 1) * itemsPerPage) < _totalProductCount)
-              _buildPageArrow(isNext: true, fontSize: fontSize, buttonSize: buttonSize),
+              _buildPageArrow(
+                  isNext: true, fontSize: fontSize, buttonSize: buttonSize),
           ],
         ),
       ),
     );
   }
-  Widget _buildPageArrow({required bool isNext, required double fontSize, required double buttonSize}) {
+
+  Widget _buildPageArrow(
+      {required bool isNext,
+      required double fontSize,
+      required double buttonSize}) {
     return InkWell(
       onTap: () {
         final newPage = isNext ? _currentPage + 1 : _currentPage - 1;
         if (_searchController.text.trim().isNotEmpty) {
           _searchProductsFromApi(_searchController.text.trim(), page: newPage);
-        } else if (_selectedMedicalField != null && _selectedMedicalField != 'All') {
+        } else if (_selectedMedicalField != null &&
+            _selectedMedicalField != 'All') {
           _loadProductsByField(_selectedMedicalField!, page: newPage);
         } else {
           _loadProductData(page: newPage);
@@ -868,6 +901,7 @@ class _UserDashboardScreenState extends State<UserDashboardScreen>
       ),
     );
   }
+
   Widget _buildHorizontalMenu() {
     return SingleChildScrollView(
       scrollDirection: Axis.horizontal,
@@ -885,6 +919,7 @@ class _UserDashboardScreenState extends State<UserDashboardScreen>
       ),
     );
   }
+
   Widget _buildMenuItem(IconData icon, String label) {
     final isSelected = (_selectedMedicalField ?? "All") == label;
 
@@ -915,6 +950,7 @@ class _UserDashboardScreenState extends State<UserDashboardScreen>
       ),
     );
   }
+
   Widget _buildActiveAppBar() {
     final screenWidth = MediaQuery.of(context).size.width;
     final isSmallScreen = screenWidth < 600;
@@ -922,7 +958,7 @@ class _UserDashboardScreenState extends State<UserDashboardScreen>
 
     return Padding(
       padding:
-      EdgeInsets.symmetric(horizontal: horizontalPadding, vertical: 16),
+          EdgeInsets.symmetric(horizontal: horizontalPadding, vertical: 16),
       child: Row(
         children: [
           Image.asset(
@@ -930,9 +966,20 @@ class _UserDashboardScreenState extends State<UserDashboardScreen>
             width: 60,
             height: 60,
             errorBuilder: (_, __, ___) =>
-            const Icon(Icons.local_pharmacy, size: 40, color: Colors.blue),
+                const Icon(Icons.local_pharmacy, size: 40, color: Colors.blue),
           ),
           const Spacer(),
+          IconButton(
+              onPressed: () async{
+                final Uri phoneUri = Uri(scheme: 'tel', path: "+919500069255");
+                if (await canLaunchUrl(phoneUri)) {
+                await launchUrl(phoneUri);
+                }
+              },
+              icon: Icon(
+                Icons.call,
+                color: Color(0xff185794),
+              )),
           IconButton(
             icon: Image.asset('assets/images/excel_icon.png', height: 24),
             onPressed: () {
@@ -942,13 +989,14 @@ class _UserDashboardScreenState extends State<UserDashboardScreen>
             tooltip: 'Download as Excel',
           ),
           IconButton(
-            icon: const Icon(Icons.logout, color: Color(0xff262A88), size: 28),
+            icon: const Icon(Icons.logout, color: Color(0xff185794), size: 28),
             onPressed: _showLogoutDialog,
           )
         ],
       ),
     );
   }
+
   Widget _buildInactiveAppBar() {
     final screenWidth = MediaQuery.of(context).size.width;
     final isSmallScreen = screenWidth < 600;
@@ -956,7 +1004,7 @@ class _UserDashboardScreenState extends State<UserDashboardScreen>
 
     return Padding(
       padding:
-      EdgeInsets.symmetric(horizontal: horizontalPadding, vertical: 16),
+          EdgeInsets.symmetric(horizontal: horizontalPadding, vertical: 16),
       child: Row(
         children: [
           Image.asset(
@@ -964,7 +1012,7 @@ class _UserDashboardScreenState extends State<UserDashboardScreen>
             width: 60,
             height: 60,
             errorBuilder: (_, __, ___) =>
-            const Icon(Icons.local_pharmacy, size: 40, color: Colors.blue),
+                const Icon(Icons.local_pharmacy, size: 40, color: Colors.blue),
           ),
           const Spacer(),
           IconButton(
@@ -975,6 +1023,7 @@ class _UserDashboardScreenState extends State<UserDashboardScreen>
       ),
     );
   }
+
   // Get color based on status
   Color _getStatusColor(String status) {
     switch (status.toLowerCase()) {
@@ -990,6 +1039,7 @@ class _UserDashboardScreenState extends State<UserDashboardScreen>
         return Colors.grey;
     }
   }
+
   // Get status display text
   String _getStatusText() {
     switch (_userStatus.toLowerCase()) {
@@ -1005,6 +1055,7 @@ class _UserDashboardScreenState extends State<UserDashboardScreen>
         return 'Unknown';
     }
   }
+
   Widget _buildPendingApprovalMessage() {
     return Expanded(
       child: Center(
@@ -1057,13 +1108,13 @@ class _UserDashboardScreenState extends State<UserDashboardScreen>
               _userStatus.toLowerCase() == 'rejected'
                   ? "Your account has been rejected by the admin. Please contact support."
                   : (_userStatus.toLowerCase() == 'blocked'
-                  ? "Your account has been blocked. Please contact support."
-                  : "You will be able to view product listings once approved."),
+                      ? "Your account has been blocked. Please contact support."
+                      : "You will be able to view product listings once approved."),
               textAlign: TextAlign.center,
               style: TextStyle(
                 fontSize: 14,
                 color: _userStatus.toLowerCase() == 'rejected' ||
-                    _userStatus.toLowerCase() == 'blocked'
+                        _userStatus.toLowerCase() == 'blocked'
                     ? Colors.red.shade700
                     : Colors.grey.shade700,
               ),
@@ -1074,36 +1125,36 @@ class _UserDashboardScreenState extends State<UserDashboardScreen>
             // Refresh button with loading indicator
             _isRefreshing
                 ? Column(
-              children: [
-                const CircularProgressIndicator(color: Color(0xff185794)),
-                const SizedBox(height: 8),
-                Text(
-                  "Checking status...",
-                  style: TextStyle(
-                    fontSize: 14,
-                    color: Colors.grey.shade600,
-                  ),
-                ),
-              ],
-            )
+                    children: [
+                      const CircularProgressIndicator(color: Color(0xff185794)),
+                      const SizedBox(height: 8),
+                      Text(
+                        "Checking status...",
+                        style: TextStyle(
+                          fontSize: 14,
+                          color: Colors.grey.shade600,
+                        ),
+                      ),
+                    ],
+                  )
                 : Column(
-              children: [
-                IconButton(
-                  onPressed: () {
-                    setState(() {
-                      _isRefreshing = true;
-                    });
-                    // Check status
-                    _validateUserAndLoadData();
-                  },
-                  icon: const Icon(
-                    Icons.refresh,
-                    color: Color(0xff185794),
-                    size: 40,
+                    children: [
+                      IconButton(
+                        onPressed: () {
+                          setState(() {
+                            _isRefreshing = true;
+                          });
+                          // Check status
+                          _validateUserAndLoadData();
+                        },
+                        icon: const Icon(
+                          Icons.refresh,
+                          color: Color(0xff185794),
+                          size: 40,
+                        ),
+                      ),
+                    ],
                   ),
-                ),
-              ],
-            ),
 
             // If active, show a button to view products
             if (_userStatus.toLowerCase() == 'active') ...[
@@ -1119,13 +1170,13 @@ class _UserDashboardScreenState extends State<UserDashboardScreen>
                   backgroundColor: const Color(0xff185794),
                   foregroundColor: Colors.white,
                   padding:
-                  const EdgeInsets.symmetric(horizontal: 32, vertical: 12),
+                      const EdgeInsets.symmetric(horizontal: 32, vertical: 12),
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(8),
                   ),
                 ),
                 child:
-                const Text("View Products", style: TextStyle(fontSize: 16)),
+                    const Text("View Products", style: TextStyle(fontSize: 16)),
               ),
             ],
           ],
@@ -1133,6 +1184,7 @@ class _UserDashboardScreenState extends State<UserDashboardScreen>
       ),
     );
   }
+
   Widget _buildProductListing() {
     final screenWidth = MediaQuery.of(context).size.width;
     final isSmallScreen = screenWidth < 600;
@@ -1157,8 +1209,10 @@ class _UserDashboardScreenState extends State<UserDashboardScreen>
                 // Only refresh the product listing, not the whole screen
                 if (_isConnected) {
                   if (_searchController.text.trim().isNotEmpty) {
-                    await _searchProductsFromApi(_searchController.text.trim(), page: 0);
-                  } else if (_selectedMedicalField != null && _selectedMedicalField != 'All') {
+                    await _searchProductsFromApi(_searchController.text.trim(),
+                        page: 0);
+                  } else if (_selectedMedicalField != null &&
+                      _selectedMedicalField != 'All') {
                     await _loadProductsByField(_selectedMedicalField!, page: 0);
                   } else {
                     await _loadProductData(page: 0);
@@ -1172,10 +1226,10 @@ class _UserDashboardScreenState extends State<UserDashboardScreen>
               child: _isProductsLoading
                   ? _buildLoadingIndicator()
                   : _errorMessage.isNotEmpty
-                  ? _buildErrorWidget()
-                  : _filteredProducts.isEmpty
-                  ? _buildEmptyState()
-                  : _buildProductListView(horizontalPadding),
+                      ? _buildErrorWidget()
+                      : _filteredProducts.isEmpty
+                          ? _buildEmptyState()
+                          : _buildProductListView(horizontalPadding),
             ),
           ),
 
@@ -1187,6 +1241,7 @@ class _UserDashboardScreenState extends State<UserDashboardScreen>
       ),
     );
   }
+
   Widget _buildSearchBar(double horizontalPadding) {
     return Padding(
       padding: EdgeInsets.symmetric(horizontal: horizontalPadding),
@@ -1217,7 +1272,7 @@ class _UserDashboardScreenState extends State<UserDashboardScreen>
             ],
           ),
           contentPadding:
-          const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+              const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
           filled: true,
           fillColor: Colors.grey.shade100,
           border: OutlineInputBorder(
@@ -1228,6 +1283,7 @@ class _UserDashboardScreenState extends State<UserDashboardScreen>
       ),
     );
   }
+
   Widget _buildTableHeader(double horizontalPadding) {
     return Padding(
       padding: EdgeInsets.symmetric(horizontal: horizontalPadding),
@@ -1263,6 +1319,7 @@ class _UserDashboardScreenState extends State<UserDashboardScreen>
       ),
     );
   }
+
   Widget _buildLoadingIndicator() {
     return const Center(
       child: Column(
@@ -1281,6 +1338,7 @@ class _UserDashboardScreenState extends State<UserDashboardScreen>
       ),
     );
   }
+
   Widget _buildErrorWidget() {
     return Center(
       child: Column(
@@ -1319,12 +1377,15 @@ class _UserDashboardScreenState extends State<UserDashboardScreen>
       ),
     );
   }
+
   Widget _buildConnectionBanner() {
     if (_isConnected) return const SizedBox.shrink();
 
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.symmetric(vertical: 6,),
+      padding: const EdgeInsets.symmetric(
+        vertical: 6,
+      ),
       color: Colors.orange.shade100,
       child: Row(
         mainAxisAlignment: MainAxisAlignment.center,
@@ -1339,6 +1400,7 @@ class _UserDashboardScreenState extends State<UserDashboardScreen>
       ),
     );
   }
+
   Widget _buildEmptyState() {
     return Center(
       child: Column(
@@ -1354,8 +1416,8 @@ class _UserDashboardScreenState extends State<UserDashboardScreen>
           Text(
             _isConnected
                 ? (_searchController.text.isEmpty
-                ? "No products available"
-                : "No products match your search")
+                    ? "No products available"
+                    : "No products match your search")
                 : "No Internet Connection",
             style: TextStyle(
               fontSize: 16,
@@ -1377,6 +1439,7 @@ class _UserDashboardScreenState extends State<UserDashboardScreen>
       ),
     );
   }
+
   // Extracted method for the ListView to use with RefreshIndicator
   Widget _buildProductListView(double horizontalPadding) {
     if (!_isConnected) {
@@ -1418,8 +1481,7 @@ class _UserDashboardScreenState extends State<UserDashboardScreen>
       itemCount: _filteredProducts.length + 1, // +1 for pull-to-refresh note
       itemBuilder: (context, index) {
         if (index == 0) {
-          return
-            Center(
+          return Center(
             child: Row(
               mainAxisSize: MainAxisSize.min,
               mainAxisAlignment: MainAxisAlignment.center,
@@ -1445,7 +1507,8 @@ class _UserDashboardScreenState extends State<UserDashboardScreen>
 
         return Card(
           margin: const EdgeInsets.symmetric(vertical: 3),
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+          shape:
+              RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
           color: Colors.white,
           elevation: 1.5,
           child: Padding(
@@ -1489,19 +1552,22 @@ class _UserDashboardScreenState extends State<UserDashboardScreen>
                       ),
                     );
 
-                    final response = await ApiService().fetchProductDetailsBySerialNo(product.serialNo ?? 0);
+                    final response = await ApiService()
+                        .fetchProductDetailsBySerialNo(product.serialNo ?? 0);
 
                     Navigator.of(context).pop(); // Close Lottie loader
 
                     if (response != null &&
                         response.getProductsContent != null &&
                         response.getProductsContent!.isNotEmpty) {
-                      final detailedProduct = response.getProductsContent!.first;
+                      final detailedProduct =
+                          response.getProductsContent!.first;
 
                       Navigator.push(
                         context,
                         MaterialPageRoute(
-                          builder: (_) => ProductDetailsScreen(getProductsContent: detailedProduct),
+                          builder: (_) => ProductDetailsScreen(
+                              getProductsContent: detailedProduct),
                         ),
                       );
                     } else {
@@ -1521,17 +1587,19 @@ class _UserDashboardScreenState extends State<UserDashboardScreen>
       },
     );
   }
+
   @override
   Widget build(BuildContext context) {
     if (_isLoading) {
       return const Scaffold(
-        body: Center(child: CircularProgressIndicator(color: Color(0xff185794))),
+        body:
+            Center(child: CircularProgressIndicator(color: Color(0xff185794))),
       );
     }
 
     return Scaffold(
       key: ValueKey<int>(_currentPage), // Force rebuild when page changes
-      backgroundColor: !isUserActive ? Color(0xffeceef3) :Colors.white,
+      backgroundColor: !isUserActive ? Color(0xffeceef3) : Colors.white,
       body: SafeArea(
         child: Column(
           children: [
@@ -1546,6 +1614,7 @@ class _UserDashboardScreenState extends State<UserDashboardScreen>
       ),
     );
   }
+
   void _showLogoutDialog() {
     showDialog(
       context: context,

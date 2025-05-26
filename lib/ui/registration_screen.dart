@@ -964,6 +964,16 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
                           'Signup to Pharma Five International Private Limited',
                           style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: Colors.black),
                         ),
+                        const SizedBox(height: 12),
+                        Text(
+                          "One Place One Press",
+                          style: TextStyle(
+                            fontSize: 14,
+                            color: Colors.black54,
+                            // color: Color(0xffacaeaf),
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
                         const SizedBox(height: 24),
 
                         if (_validationMessage != null)

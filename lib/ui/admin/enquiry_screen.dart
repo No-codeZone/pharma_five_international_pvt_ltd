@@ -1037,44 +1037,56 @@ class _EnquiryTabState extends State<EnquiryTab> {
             Expanded(
               flex: 4,
               child: isNew
-                  ? Text(
-                      item.productName,
-                      style: TextStyle(
-                          fontWeight:
-                              isNew ? FontWeight.bold : FontWeight.normal,
-                          fontSize: 16,
-                          color: Color(0xff185794)),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    )
-                  : Text(
-                      item.productName,
-                      style: TextStyle(
-                        fontWeight: isNew ? FontWeight.bold : FontWeight.normal,
-                        fontSize: 14,
+                  ? Padding(
+                    padding: const EdgeInsets.only(left: 20.0),
+                    child: Text(
+                        item.productName,
+                        style: TextStyle(
+                            fontWeight:
+                                isNew ? FontWeight.bold : FontWeight.normal,
+                            fontSize: 16,
+                            color: Color(0xff185794)),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
                       ),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
+                  )
+                  : Padding(
+                    padding: const EdgeInsets.only(left: 20.0),
+                    child: Text(
+                        item.productName,
+                        style: TextStyle(
+                          fontWeight: isNew ? FontWeight.bold : FontWeight.normal,
+                          fontSize: 14,
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                  ),
             ),
             isNew
                 ? Expanded(
                     flex: 3,
-                    child: Text(
-                      item.userName,
-                      style: const TextStyle(
-                          fontSize: 15, color: Color(0xff185794)),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
+                    child: Padding(
+                      padding: const EdgeInsets.only(left: 8.0),
+                      child: Text(
+                        item.userName,
+                        style: const TextStyle(
+                            fontSize: 15, color: Color(0xff185794)),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
                     ),
                   )
                 : Expanded(
                     flex: 3,
-                    child: Text(
-                      item.userName,
-                      style: const TextStyle(fontSize: 13),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
+                    child: Padding(
+                      padding: const EdgeInsets.only(left: 8.0),
+                      child: Text(
+                        item.userName,
+                        style: const TextStyle(fontSize: 13),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
                     ),
                   ),
             Expanded(

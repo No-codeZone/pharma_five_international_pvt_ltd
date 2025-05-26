@@ -60,21 +60,33 @@ class _WalkthroughScreenState extends State<WalkthroughScreen> {
             children: [
               // Logo section
               Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Center(
-                    child: Image.asset(
-                      'assets/images/logo_pf.png',
-                      width: 100,
-                      height: 100,
-                      errorBuilder: (context, error, stackTrace) => const Icon(
-                        Icons.medical_services_outlined,
-                        color: Color(0xff185794),
-                        size: 30,
+                  // Logo on the left
+                  Image.asset(
+                    'assets/images/logo_pf.png',
+                    width: 100,
+                    height: 100,
+                    errorBuilder: (context, error, stackTrace) => const Icon(
+                      Icons.medical_services_outlined,
+                      color: Color(0xff185794),
+                      size: 30,
+                    ),
+                  ),
+
+                  // Tagline on the right
+                  Padding(
+                    padding: const EdgeInsets.only(top: 35.0),
+                    child: const Text(
+                      "One Place One Press",
+                      style: TextStyle(
+                        fontSize: 14,
+                        color: Colors.black54,
+                        fontWeight: FontWeight.bold,
                       ),
                     ),
                   ),
-                  const SizedBox(width: 12),
-                  const Spacer(),
                 ],
               ),
 
