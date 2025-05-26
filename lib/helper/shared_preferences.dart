@@ -1,5 +1,8 @@
+import 'package:flutter/cupertino.dart';
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+
+import '../ui/terms_privacy_dialog.dart';
 
 class SharedPreferenceHelper {
   SharedPreferenceHelper._();
@@ -159,6 +162,18 @@ class SharedPreferenceHelper {
     return prefs.getString(_keyInstallationId);
   }
 
+  static Future<void> checkAndShowTermsDialog(BuildContext context) async {
+    final prefs = await SharedPreferences.getInstance();
+    final currentVersion = '1.0.0';
+    final agreedVersion = prefs.getString('agreedTermsVersion');
+
+    if (agreedVersion != currentVersion) {
+      showTermsAndPrivacyDialog(context, currentVersion);
+    }
+  }
+
+
+
   static Future<bool> clearSession() async {
     try {
       final prefs = await _getInstance();
@@ -169,6 +184,7 @@ class SharedPreferenceHelper {
         prefs.remove(_userTypeKey),
         prefs.remove(_userStatusKey),
         prefs.remove(_userSnoKey),
+        prefs.remove('hasAgreedToTerms')
       ]).then((_) => true);
     } catch (e) {
       if (kDebugMode) {

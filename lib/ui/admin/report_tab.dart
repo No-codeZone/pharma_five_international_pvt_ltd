@@ -467,78 +467,6 @@ class _ReportTabState extends State<ReportTab> with SingleTickerProviderStateMix
     }
   }
 
-  // Future<void> _downloadProductSearchLogExcel() async {
-  //   try {
-  //     // ✅ Step 1: Reliable Internet Check
-  //     bool hasInternet = false;
-  //     try {
-  //       final result = await InternetAddress.lookup('google.com');
-  //       if (result.isNotEmpty && result[0].rawAddress.isNotEmpty) {
-  //         hasInternet = true;
-  //       }
-  //     } on SocketException catch (_) {
-  //       hasInternet = false;
-  //     }
-  //
-  //     if (!hasInternet) {
-  //       Fluttertoast.showToast(
-  //         msg: "No internet connection",
-  //         backgroundColor: Colors.red,
-  //         textColor: Colors.white,
-  //         gravity: ToastGravity.TOP,
-  //         toastLength: Toast.LENGTH_LONG,
-  //       );
-  //       return;
-  //     }
-  //
-  //     // ✅ Step 2: Request Permission
-  //     final hasPermission = await FileDownloadHelper.requestStoragePermission(context);
-  //     if (!hasPermission) return;
-  //
-  //     // ✅ Step 3: Get Directory
-  //     final directory = await FileDownloadHelper.getDownloadDirectory();
-  //     if (directory == null) {
-  //       Fluttertoast.showToast(
-  //         msg: "Unable to access storage",
-  //         backgroundColor: Colors.red,
-  //         textColor: Colors.white,
-  //         gravity: ToastGravity.TOP,
-  //         toastLength: Toast.LENGTH_LONG,
-  //       );
-  //       return;
-  //     }
-  //
-  //     // ✅ Step 4: Make API Call
-  //     final url = Uri.parse("http://13.49.224.44:8080/api/product/search-logs?days=$_selectedDayFilter&download=true");
-  //     final filename = "product_search_logs_${DateTime.now().millisecondsSinceEpoch}.xlsx";
-  //     final filePath = "${directory.path}/$filename";
-  //
-  //     final response = await http.get(url);
-  //
-  //     if (response.statusCode == 200) {
-  //       final file = File(filePath);
-  //       await file.writeAsBytes(response.bodyBytes);
-  //       await FileDownloadHelper.showFileDownloadSnackBar(context, filePath, Platform.isIOS);
-  //     } else {
-  //       Fluttertoast.showToast(
-  //         msg: "Download failed: Status ${response.statusCode}",
-  //         backgroundColor: Colors.red,
-  //         textColor: Colors.white,
-  //         gravity: ToastGravity.TOP,
-  //         toastLength: Toast.LENGTH_LONG,
-  //       );
-  //     }
-  //   } catch (e) {
-  //     debugPrint("Download error: $e");
-  //     Fluttertoast.showToast(
-  //       msg: "Error: $e",
-  //       backgroundColor: Colors.red,
-  //       textColor: Colors.white,
-  //       gravity: ToastGravity.TOP,
-  //       toastLength: Toast.LENGTH_LONG,
-  //     );
-  //   }
-  // }
   Future<void> _downloadProductSearchLogExcel() async {
     setState(() => _isLoading = true);
 
@@ -1191,13 +1119,15 @@ class _ReportTabState extends State<ReportTab> with SingleTickerProviderStateMix
     for (var session in sessions) {
       if (session.loginTime != null) {
         final date = DateTime.parse(session.loginTime!).toLocal();
-        final label = "${date.year}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}";
+        final monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+          'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+        final label = "${date.day.toString().padLeft(2, '0')} ${monthNames[date.month - 1]} ${date.year}";
         sessionCountByDate[label] = (sessionCountByDate[label] ?? 0) + 1;
       }
     }
 
     final sortedEntries = sessionCountByDate.entries.toList()
-      ..sort((a, b) => b.value.compareTo(a.value)); // Descending
+      ..sort((a, b) => b.key.compareTo(a.key)); // Sort by date descending (most recent first)
 
     if (sortedEntries.isEmpty) {
       return Center(
@@ -1215,7 +1145,7 @@ class _ReportTabState extends State<ReportTab> with SingleTickerProviderStateMix
       );
     }
 
-    final maxSessions = sortedEntries.first.value.toDouble();
+    final maxSessions = sessionCountByDate.values.reduce((a, b) => a > b ? a : b).toDouble();
     const double barHeight = 28.0;
     const double labelWidth = 80;
 

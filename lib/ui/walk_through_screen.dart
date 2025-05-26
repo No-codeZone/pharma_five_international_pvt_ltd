@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:lottie/lottie.dart';
+import 'package:pharma_five/ui/doctor/user_nav_tab.dart';
 import 'package:pharma_five/ui/registration_screen.dart';
 
 import '../helper/shared_preferences.dart';
@@ -18,6 +19,9 @@ class _WalkthroughScreenState extends State<WalkthroughScreen> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      SharedPreferenceHelper.checkAndShowTermsDialog(context);
+    });
     _checkLoginStatus();
   }
 
@@ -32,7 +36,8 @@ class _WalkthroughScreenState extends State<WalkthroughScreen> {
           // AdminDashboardScreen();
           userType == 'admin'
               ? const AdminDashboardScreen()
-              : UserDashboardScreen();
+              : UserNavTab();
+              // : UserDashboardScreen();
       // userType == 'admin' ? const AdminDashboard() : UserDashboardScreen();
 
       Future.microtask(() {
@@ -53,6 +58,7 @@ class _WalkthroughScreenState extends State<WalkthroughScreen> {
           padding: const EdgeInsets.symmetric(horizontal: 24.0, vertical: 16.0),
           child: Column(
             children: [
+              // Logo section
               Row(
                 children: [
                   Center(
@@ -60,7 +66,7 @@ class _WalkthroughScreenState extends State<WalkthroughScreen> {
                       'assets/images/logo_pf.png',
                       width: 100,
                       height: 100,
-                      errorBuilder: (context, error, stackTrace) => Icon(
+                      errorBuilder: (context, error, stackTrace) => const Icon(
                         Icons.medical_services_outlined,
                         color: Color(0xff185794),
                         size: 30,
@@ -68,68 +74,43 @@ class _WalkthroughScreenState extends State<WalkthroughScreen> {
                     ),
                   ),
                   const SizedBox(width: 12),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.end,
-                      children: [
-                        const SizedBox(height: 4),
-                        // Text(
-                        //   'Ask Pharma Five',
-                        //   style: TextStyle(
-                        //       fontSize: 16,
-                        //       color: Colors.grey.shade600,
-                        //       fontWeight: FontWeight.bold),
-                        // ),
-                        /*Text(
-                          'Join us today for easy',
-                          style: TextStyle(
-                              fontSize: 16,
-                              color: Colors.grey.shade600,
-                              fontWeight: FontWeight.bold),
-                        ),
-                        Text(
-                          'medicine management!',
-                          style: TextStyle(
-                              fontSize: 16,
-                              color: Colors.grey.shade600,
-                              fontWeight: FontWeight.bold),
-                        ),*/
-                      ],
-                    ),
-                  ),
+                  const Spacer(),
                 ],
               ),
+
               const SizedBox(height: 60),
-              Container(
+
+              // Lottie Animation
+              SizedBox(
                 width: double.infinity,
                 height: 300,
                 child: Stack(
                   alignment: Alignment.center,
                   children: [
                     Positioned(
-                      /*child: Image.asset(
-                        'assets/animations/landing.json', // Update with your GIF path
-                        width: 320,
+                      child: Lottie.asset(
+                        "assets/animations/walkthrough.json",
                         height: 320,
+                        width: 320,
                         fit: BoxFit.cover,
-                      ),*/
-                      child: Lottie.asset("assets/animations/walkthrough.json",
-                          height: 320, width: 320, fit: BoxFit.cover),
+                      ),
                     ),
-                    /*Lottie.asset("assets/animations/pharma_five_landing_img.json",
-                        width: 320, height: 320, fit: BoxFit.cover)*/
                   ],
                 ),
               ),
+
               const Spacer(),
+
+              // Buttons Container
               Container(
                 padding: const EdgeInsets.all(10),
                 decoration: BoxDecoration(
-                  color: Colors.grey.shade200, // Light gray background
+                  color: Colors.grey.shade200,
                   borderRadius: BorderRadius.circular(25),
                 ),
                 child: Column(
                   children: [
+                    // Sign Up Button
                     SizedBox(
                       width: double.infinity,
                       height: 56,
@@ -138,11 +119,9 @@ class _WalkthroughScreenState extends State<WalkthroughScreen> {
                           boxShadow: [
                             BoxShadow(
                               color: Colors.black.withOpacity(0.2),
-                              // Slight shadow color
                               spreadRadius: 3,
                               blurRadius: 6,
-                              offset:
-                                  Offset(0, 3), // Positioned slightly downward
+                              offset: const Offset(0, 3),
                             ),
                           ],
                           borderRadius: BorderRadius.circular(25),
@@ -160,8 +139,7 @@ class _WalkthroughScreenState extends State<WalkthroughScreen> {
                             foregroundColor: Colors.white,
                             shape: RoundedRectangleBorder(
                                 borderRadius: BorderRadius.circular(25)),
-                            elevation:
-                                0, // No built-in elevation since we're using custom shadow
+                            elevation: 0,
                           ),
                           child: Row(
                             mainAxisAlignment: MainAxisAlignment.start,
@@ -190,10 +168,13 @@ class _WalkthroughScreenState extends State<WalkthroughScreen> {
                         ),
                       ),
                     ),
+
                     const SizedBox(height: 16),
+
+                    // Login Button
                     Container(
                       decoration: BoxDecoration(
-                        color: Color(0xffffffff), // Pure white background
+                        color: Colors.white,
                         borderRadius: BorderRadius.circular(25),
                       ),
                       child: SizedBox(
@@ -209,11 +190,10 @@ class _WalkthroughScreenState extends State<WalkthroughScreen> {
                           },
                           style: ElevatedButton.styleFrom(
                             backgroundColor: Colors.grey.shade50,
-                            // Almost white button color
                             foregroundColor: Colors.grey.shade600,
                             shape: RoundedRectangleBorder(
                                 borderRadius: BorderRadius.circular(25)),
-                            elevation: 0, // Flat design, no shadow
+                            elevation: 0,
                           ),
                           child: Row(
                             mainAxisAlignment: MainAxisAlignment.start,
@@ -221,7 +201,6 @@ class _WalkthroughScreenState extends State<WalkthroughScreen> {
                               Container(
                                 decoration: BoxDecoration(
                                   color: Colors.white,
-                                  // Keeping icon container white
                                   borderRadius: BorderRadius.circular(50),
                                 ),
                                 child: Padding(
@@ -237,9 +216,10 @@ class _WalkthroughScreenState extends State<WalkthroughScreen> {
                               Text(
                                 'Login',
                                 style: TextStyle(
-                                    fontSize: 16,
-                                    fontWeight: FontWeight.w600,
-                                    color: Colors.grey.shade600),
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.w600,
+                                  color: Colors.grey.shade600,
+                                ),
                               ),
                             ],
                           ),
@@ -248,6 +228,19 @@ class _WalkthroughScreenState extends State<WalkthroughScreen> {
                     ),
                   ],
                 ),
+              ),
+
+              const SizedBox(height: 18),
+
+              // Doctor-only disclaimer
+              const Text(
+                "This app is intended only for Doctors.",
+                style: TextStyle(
+                  fontSize: 13,
+                  fontStyle: FontStyle.italic,
+                  color: Colors.black54,
+                ),
+                textAlign: TextAlign.center,
               ),
             ],
           ),

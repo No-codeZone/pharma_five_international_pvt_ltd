@@ -4,6 +4,7 @@ import 'package:internet_connection_checker_plus/internet_connection_checker_plu
 import 'package:pharma_five/ui/admin/admin_dashboard.dart';
 import 'package:pharma_five/ui/forgot_password_screen.dart';
 import 'package:pharma_five/ui/registration_screen.dart';
+import 'package:pharma_five/ui/terms_web_view_screen.dart';
 import 'package:pharma_five/ui/walk_through_screen.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 import '../helper/color_manager.dart';
@@ -13,6 +14,7 @@ import 'package:flutter/gestures.dart';
 import 'admin/admin_dashboard_screen.dart';
 import 'admin_approval_screen.dart';
 import 'doctor/user_dashboard.dart';
+import 'doctor/user_nav_tab.dart';
 
 // Instead of directly using WebView, we'll create a simpler implementation using a Dialog
 
@@ -31,6 +33,7 @@ class _LoginScreenState extends State<LoginScreen> {
   bool _isLoading = false;
   bool _wasDisconnected = false;
   String? _validationMessage;
+  final TapGestureRecognizer _tapRecognizer = TapGestureRecognizer();
 
   void _showToast(String message, {bool isError = false}) {
     Fluttertoast.showToast(
@@ -67,6 +70,12 @@ class _LoginScreenState extends State<LoginScreen> {
         // _showToast("Internet connected");
       }
     });
+    // _tapRecognizer.onTap = () {
+    //   Navigator.push(
+    //     context,
+    //     MaterialPageRoute(builder: (context) => const TermsWebViewScreen()),
+    //   );
+    // };
   }
 
   Future<void> _checkAndClearSession() async {
@@ -78,6 +87,12 @@ class _LoginScreenState extends State<LoginScreen> {
       await ApiService().logoutUser(userEmail: email);
       await SharedPreferenceHelper.clearSession();
     }
+  }
+
+  @override
+  void dispose() {
+    // _tapRecognizer.dispose();
+    super.dispose();
   }
 
   void _openTermsAndPrivacyDialog() {
@@ -188,7 +203,8 @@ class _LoginScreenState extends State<LoginScreen> {
           } else if (role == 'user' && status == 'active') {
             Navigator.pushReplacement(
               context,
-              MaterialPageRoute(builder: (_) => const UserDashboardScreen()),
+              MaterialPageRoute(builder: (_) => UserNavTab()),
+              // MaterialPageRoute(builder: (_) => const UserDashboardScreen()),
             );
           }
         } else if (!success &&
@@ -196,7 +212,8 @@ class _LoginScreenState extends State<LoginScreen> {
 
           Navigator.pushReplacement(
             context,
-            MaterialPageRoute(builder: (_) => const UserDashboardScreen()),
+            MaterialPageRoute(builder: (_) => const UserNavTab()),
+            // MaterialPageRoute(builder: (_) => const UserDashboardScreen()),
           );
         } else {
           _showToast(message.isNotEmpty ? message : "Login failed.", isError: true);
@@ -360,7 +377,6 @@ class _LoginScreenState extends State<LoginScreen> {
                       ),
                     ),
                     // const SizedBox(height: 16),
-
                     /*Center(
                       child: Padding(
                         padding: const EdgeInsets.only(left: 8.0),
@@ -377,6 +393,7 @@ class _LoginScreenState extends State<LoginScreen> {
                                 style: const TextStyle(
                                     fontWeight: FontWeight.bold,
                                     color: Colors.black),
+                                // recognizer: _tapRecognizer,
                                 recognizer: TapGestureRecognizer()
                                   ..onTap = _openTermsAndPrivacyDialog,
                               ),

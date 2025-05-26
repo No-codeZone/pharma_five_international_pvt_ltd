@@ -911,149 +911,176 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
     return Scaffold(
       backgroundColor: Colors.white,
       body: SafeArea(
-        child: SingleChildScrollView(
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
-            child: Form(
-              key: _formKey,
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      InkWell(
-                        onTap: () => Navigator.pushReplacement(
-                          context,
-                          MaterialPageRoute(builder: (_) => const WalkthroughScreen()),
+        child: Column(
+          children: [
+            // Scrollable form section
+            Expanded(
+              child: SingleChildScrollView(
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+                  child: Form(
+                    key: _formKey,
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        // Top row: back button + logo
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            InkWell(
+                              onTap: () => Navigator.pushReplacement(
+                                context,
+                                MaterialPageRoute(builder: (_) => const WalkthroughScreen()),
+                              ),
+                              borderRadius: BorderRadius.circular(20),
+                              child: Container(
+                                width: 40,
+                                height: 40,
+                                decoration: BoxDecoration(
+                                  color: const Color(0xff185794),
+                                  borderRadius: BorderRadius.circular(20),
+                                  border: Border.all(color: const Color(0xFF9ABEE3), width: 4),
+                                ),
+                                child: const Center(
+                                  child: Icon(Icons.arrow_back_ios_new, color: Colors.white, size: 18),
+                                ),
+                              ),
+                            ),
+                            Image.asset(
+                              'assets/images/logo_pf.png',
+                              width: 80,
+                              height: 80,
+                              errorBuilder: (_, __, ___) => Icon(
+                                Icons.medical_services_outlined,
+                                color: Colors.blue.shade700,
+                                size: 30,
+                              ),
+                            ),
+                          ],
                         ),
-                        borderRadius: BorderRadius.circular(20),
-                        child: Container(
-                          width: 40,
-                          height: 40,
-                          decoration: BoxDecoration(
-                            color: const Color(0xff185794),
-                            borderRadius: BorderRadius.circular(20),
-                            border: Border.all(color: const Color(0xFF9ABEE3), width: 4),
-                          ),
-                          child: const Center(
-                            child: Icon(Icons.arrow_back_ios_new, color: Colors.white, size: 18),
-                          ),
-                        ),
-                      ),
-                      Image.asset(
-                        'assets/images/logo_pf.png',
-                        width: 80,
-                        height: 80,
-                        errorBuilder: (_, __, ___) => Icon(Icons.medical_services_outlined,
-                            color: Colors.blue.shade700, size: 30),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 16),
-                  const Text(
-                    'Signup to Pharma Five International Private Limited',
-                    style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: Colors.black),
-                  ),
-                  const SizedBox(height: 16),
-                  // Text(
-                  //   'Ask Pharma Five',
-                  //   style: TextStyle(fontSize: 14, color: Colors.black54),
-                  // ),
-                  const SizedBox(height: 24),
+                        const SizedBox(height: 16),
 
-                  // Error message container at the top
-                  if (_validationMessage != null)
-                    Container(
-                      padding: const EdgeInsets.all(12),
-                      margin: const EdgeInsets.only(bottom: 16),
-                      decoration: BoxDecoration(
-                        color: Colors.red.shade50,
-                        borderRadius: BorderRadius.circular(12),
-                        border: Border.all(color: Colors.red.shade200),
-                      ),
-                      child: Row(
-                        children: [
-                          const Icon(Icons.error_outline, color: Colors.red, size: 20),
-                          const SizedBox(width: 12),
-                          Expanded(
-                            child: Text(
-                              _validationMessage!,
-                              style: TextStyle(color: Colors.red.shade700, fontSize: 14),
+                        const Text(
+                          'Signup to Pharma Five International Private Limited',
+                          style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: Colors.black),
+                        ),
+                        const SizedBox(height: 24),
+
+                        if (_validationMessage != null)
+                          Container(
+                            padding: const EdgeInsets.all(12),
+                            margin: const EdgeInsets.only(bottom: 16),
+                            decoration: BoxDecoration(
+                              color: Colors.red.shade50,
+                              borderRadius: BorderRadius.circular(12),
+                              border: Border.all(color: Colors.red.shade200),
+                            ),
+                            child: Row(
+                              children: [
+                                const Icon(Icons.error_outline, color: Colors.red, size: 20),
+                                const SizedBox(width: 12),
+                                Expanded(
+                                  child: Text(
+                                    _validationMessage!,
+                                    style: TextStyle(color: Colors.red.shade700, fontSize: 14),
+                                  ),
+                                ),
+                              ],
                             ),
                           ),
-                        ],
-                      ),
-                    ),
 
-                  buildTextField("Full Name", _nameController, isValid: _isNameValid),
-                  buildTextField("Organization", _organizationController, isValid: _isOrganizationValid),
-                  buildMobileNumberField(),
-                  buildTextField("Email", _emailController, isEmail: true, isValid: _isEmailValid),
-                  buildPasswordField(),
+                        buildTextField("Full Name", _nameController, isValid: _isNameValid),
+                        buildTextField("Organization", _organizationController, isValid: _isOrganizationValid),
+                        buildMobileNumberField(),
+                        buildTextField("Email", _emailController, isEmail: true, isValid: _isEmailValid),
+                        buildPasswordField(),
 
-                  SizedBox(
-                    width: double.infinity,
-                    height: 50,
-                    child: ElevatedButton(
-                      onPressed: _isLoading ? null : _validateForm,
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: const Color(0xff185794),
-                        foregroundColor: Colors.white,
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(30)),
-                        disabledBackgroundColor: Colors.grey.shade300,
-                      ),
-                      child: _isLoading
-                          ? const SizedBox(
-                        height: 24,
-                        width: 24,
-                        child: CircularProgressIndicator(
-                          strokeWidth: 2.5,
-                          valueColor: AlwaysStoppedAnimation<Color>(Color(0xff185794)),
+                        SizedBox(
+                          width: double.infinity,
+                          height: 50,
+                          child: ElevatedButton(
+                            onPressed: _isLoading ? null : _validateForm,
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: const Color(0xff185794),
+                              foregroundColor: Colors.white,
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(30)),
+                              disabledBackgroundColor: Colors.grey.shade300,
+                            ),
+                            child: _isLoading
+                                ? const SizedBox(
+                              height: 24,
+                              width: 24,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2.5,
+                                valueColor: AlwaysStoppedAnimation<Color>(Color(0xff185794)),
+                              ),
+                            )
+                                : const Text('Sign Up',
+                                style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
+                          ),
                         ),
-                      )
-                          : const Text('Sign Up', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
+
+                        const SizedBox(height: 12),
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Padding(
+                              padding: const EdgeInsets.symmetric(horizontal: 12),
+                              child: Text('or',
+                                  style: TextStyle(color: Colors.grey.shade600, fontSize: 14)),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 12),
+
+                        SizedBox(
+                          width: double.infinity,
+                          height: 50,
+                          child: OutlinedButton(
+                            onPressed: _isLoading
+                                ? null
+                                : () {
+                              Navigator.pushReplacement(
+                                context,
+                                MaterialPageRoute(builder: (_) => const LoginScreen()),
+                              );
+                            },
+                            style: OutlinedButton.styleFrom(
+                              foregroundColor: Colors.grey.shade700,
+                              side: const BorderSide(color: Color(0xff185794)),
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(30)),
+                            ),
+                            child: const Text(
+                              'Login',
+                              style: TextStyle(
+                                fontSize: 16,
+                                fontWeight: FontWeight.w600,
+                                color: Color(0xff185794),
+                              ),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(height: 16),
+                      ],
                     ),
                   ),
-
-                  const SizedBox(height: 12),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 12),
-                        child: Text('or', style: TextStyle(color: Colors.grey.shade600, fontSize: 14)),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 12),
-
-                  SizedBox(
-                    width: double.infinity,
-                    height: 50,
-                    child: OutlinedButton(
-                      onPressed: _isLoading
-                          ? null
-                          : () {
-                        Navigator.pushReplacement(
-                          context,
-                          MaterialPageRoute(builder: (_) => const LoginScreen()),
-                        );
-                      },
-                      style: OutlinedButton.styleFrom(
-                        foregroundColor: Colors.grey.shade700,
-                        side: const BorderSide(color: Color(0xff185794)),
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(30)),
-                      ),
-                      child: const Text('Login',
-                          style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600, color: Color(0xff185794))),
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-                ],
+                ),
               ),
             ),
-          ),
+            // Footer text (always at bottom)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 12),
+              child: Text(
+                "This app is intended only for Doctors.",
+                style: TextStyle(
+                  fontSize: 13,
+                  fontStyle: FontStyle.italic,
+                  color: Colors.grey.shade700,
+                ),
+                textAlign: TextAlign.center,
+              ),
+            ),
+          ],
         ),
       ),
     );

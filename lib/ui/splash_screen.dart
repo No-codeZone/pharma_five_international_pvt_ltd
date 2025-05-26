@@ -2,6 +2,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:fluttertoast/fluttertoast.dart';
 import 'package:internet_connection_checker_plus/internet_connection_checker_plus.dart';
+import 'package:pharma_five/ui/doctor/user_nav_tab.dart';
 import 'package:pharma_five/ui/login_screen.dart';
 import 'package:pharma_five/ui/walk_through_screen.dart';
 import 'package:pharma_five/ui/doctor/user_dashboard.dart';
@@ -53,7 +54,6 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
     );
   }
 
-
   Future<void> _navigateAfterDelay() async {
     try {
       await Future.delayed(const Duration(seconds: 3));
@@ -78,7 +78,8 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
         if (role == 'admin') {
           Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => const AdminDashboardScreen()));
         } else if (role == 'user' && status == 'active') {
-          Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => const UserDashboardScreen()));
+          Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => const UserNavTab()));
+          // Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => const UserDashboardScreen()));
         } else {
           Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => const AdminApprovalScreen()));
         }
@@ -91,7 +92,6 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
       Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => const LoginScreen()));
     }
   }
-
 
   Future<void> _checkAndClearSession() async {
     await SharedPreferenceHelper.init();
@@ -118,7 +118,6 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
       await SharedPreferenceHelper.setInstallationId(newInstallationId);
     }
   }
-
 
   @override
   void dispose() {

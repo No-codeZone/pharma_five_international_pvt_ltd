@@ -60,7 +60,6 @@ class _UserDashboardScreenState extends State<UserDashboardScreen>
   bool _lastConnectionStatus = true;
   // Key for product list refresh
   final GlobalKey<RefreshIndicatorState> _refreshIndicatorKey = GlobalKey<RefreshIndicatorState>();
-
   @override
   void initState() {
     super.initState();
@@ -68,7 +67,6 @@ class _UserDashboardScreenState extends State<UserDashboardScreen>
     _validateUserAndLoadData();
     _startConnectivityListener();
   }
-
   void _startConnectivityListener() {
     _connectivitySubscription =
         _connectivity.onConnectivityChanged.listen((results) async {
@@ -81,14 +79,7 @@ class _UserDashboardScreenState extends State<UserDashboardScreen>
               _isConnected = connected;
               _lastConnectionStatus = connected;
             });
-
-            // Fluttertoast.showToast(
-            //   msg: connected ? "Internet connected" : "Internet disconnected",
-            //   backgroundColor: connected ? Color(0xff185794) : Colors.red,
-            // );
-
             if (connected) {
-              // Auto reload product list
               if (_selectedMedicalField != null) {
                 await _loadProductsByField(_selectedMedicalField!);
               } else {
@@ -98,7 +89,6 @@ class _UserDashboardScreenState extends State<UserDashboardScreen>
           }
         });
   }
-
   Future<bool> _checkInternetConnectivity() async {
     try {
       final result = await InternetAddress.lookup('google.com');
@@ -107,7 +97,6 @@ class _UserDashboardScreenState extends State<UserDashboardScreen>
       return false;
     }
   }
-
   Future<void> _validateUserAndLoadData() async {
     setState(() {
       _isLoading = true;
@@ -202,7 +191,6 @@ class _UserDashboardScreenState extends State<UserDashboardScreen>
       }
     }
   }
-
   void _showToast(String message, {bool isError = false}) {
     Fluttertoast.showToast(
       msg: message,
@@ -214,7 +202,6 @@ class _UserDashboardScreenState extends State<UserDashboardScreen>
       timeInSecForIosWeb: 3,
     );
   }
-
   Future<void> _searchProductsFromApi(String searchTerm, {int page = 0}) async {
     if (searchTerm.trim().isEmpty) {
       _loadProductData(page: 0);
@@ -263,7 +250,6 @@ class _UserDashboardScreenState extends State<UserDashboardScreen>
       });
     }
   }
-
   Future<void> _loadProductsByField(String field, {int page = 0}) async {
     setState(() {
       _isProductsLoading = true;
@@ -308,7 +294,6 @@ class _UserDashboardScreenState extends State<UserDashboardScreen>
       });
     }
   }
-
   Future<bool> _requestFileOperationPermissions() async {
     // Check current connection first
     if (!_isConnected) {
@@ -327,7 +312,6 @@ class _UserDashboardScreenState extends State<UserDashboardScreen>
       return true;
     }
   }
-
   Future<bool> _requestAndroidPermissions() async {
     final deviceInfo = DeviceInfoPlugin();
     final androidInfo = await deviceInfo.androidInfo;
@@ -410,7 +394,6 @@ class _UserDashboardScreenState extends State<UserDashboardScreen>
     _showToast("Storage permissions are needed for Excel operations", isError: true);
     return false;
   }
-
   Future<bool> _requestIOSPermissions() async {
     final documentsStatus = await Permission.storage.request();
 
@@ -429,7 +412,6 @@ class _UserDashboardScreenState extends State<UserDashboardScreen>
     _showToast("Storage permission is required for Excel file operations.", isError: true);
     return false;
   }
-
   void _showPermissionSettingsDialog(String title, String message, {bool isWarningOnly = false}) {
     final ThemeData theme = Theme.of(context);
     final Color primaryColor = const Color(0xff185794);
@@ -571,7 +553,6 @@ class _UserDashboardScreenState extends State<UserDashboardScreen>
       ),
     );
   }
-
   Future<Directory?> _getAppropriateDirectory() async {
     Directory? directory;
 
@@ -615,7 +596,6 @@ class _UserDashboardScreenState extends State<UserDashboardScreen>
       return await getApplicationDocumentsDirectory();
     }
   }
-
   Future<void> _downloadExcelFile() async {
     setState(() => _isLoading = true);
 
@@ -694,12 +674,10 @@ class _UserDashboardScreenState extends State<UserDashboardScreen>
       setState(() => _isLoading = false);
     }
   }
-
   String _getCurrentTimeFormatted() {
     final now = DateTime.now();
     return '${now.hour}:${now.minute.toString().padLeft(2, '0')}';
   }
-
   Future<void> _loadProductData({int page = 0}) async {
     setState(() {
       _isProductsLoading = true;
@@ -746,7 +724,6 @@ class _UserDashboardScreenState extends State<UserDashboardScreen>
       });
     }
   }
-
   void _navigateToLogin() {
     SharedPreferenceHelper.clearSession().then((_) {
       Navigator.pushReplacement(
@@ -755,7 +732,6 @@ class _UserDashboardScreenState extends State<UserDashboardScreen>
       );
     });
   }
-
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
@@ -763,14 +739,12 @@ class _UserDashboardScreenState extends State<UserDashboardScreen>
     _searchController.dispose();
     super.dispose();
   }
-
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
       _validateUserAndLoadData();
     }
   }
-
   Future<void> _logout() async {
     try {
       final email = await SharedPreferenceHelper.getUserEmail();
@@ -791,7 +765,6 @@ class _UserDashboardScreenState extends State<UserDashboardScreen>
       );
     }
   }
-
   Widget _buildPagination() {
     if (_filteredProducts.isEmpty && _currentPage == 0) {
       return const SizedBox.shrink(); // No pagination needed
@@ -870,7 +843,6 @@ class _UserDashboardScreenState extends State<UserDashboardScreen>
       ),
     );
   }
-
   Widget _buildPageArrow({required bool isNext, required double fontSize, required double buttonSize}) {
     return InkWell(
       onTap: () {
@@ -896,7 +868,6 @@ class _UserDashboardScreenState extends State<UserDashboardScreen>
       ),
     );
   }
-
   Widget _buildHorizontalMenu() {
     return SingleChildScrollView(
       scrollDirection: Axis.horizontal,
@@ -914,7 +885,6 @@ class _UserDashboardScreenState extends State<UserDashboardScreen>
       ),
     );
   }
-
   Widget _buildMenuItem(IconData icon, String label) {
     final isSelected = (_selectedMedicalField ?? "All") == label;
 
@@ -945,7 +915,6 @@ class _UserDashboardScreenState extends State<UserDashboardScreen>
       ),
     );
   }
-
   Widget _buildActiveAppBar() {
     final screenWidth = MediaQuery.of(context).size.width;
     final isSmallScreen = screenWidth < 600;
@@ -980,7 +949,6 @@ class _UserDashboardScreenState extends State<UserDashboardScreen>
       ),
     );
   }
-
   Widget _buildInactiveAppBar() {
     final screenWidth = MediaQuery.of(context).size.width;
     final isSmallScreen = screenWidth < 600;
@@ -1007,7 +975,6 @@ class _UserDashboardScreenState extends State<UserDashboardScreen>
       ),
     );
   }
-
   // Get color based on status
   Color _getStatusColor(String status) {
     switch (status.toLowerCase()) {
@@ -1023,7 +990,6 @@ class _UserDashboardScreenState extends State<UserDashboardScreen>
         return Colors.grey;
     }
   }
-
   // Get status display text
   String _getStatusText() {
     switch (_userStatus.toLowerCase()) {
@@ -1039,7 +1005,6 @@ class _UserDashboardScreenState extends State<UserDashboardScreen>
         return 'Unknown';
     }
   }
-
   Widget _buildPendingApprovalMessage() {
     return Expanded(
       child: Center(
@@ -1168,7 +1133,6 @@ class _UserDashboardScreenState extends State<UserDashboardScreen>
       ),
     );
   }
-
   Widget _buildProductListing() {
     final screenWidth = MediaQuery.of(context).size.width;
     final isSmallScreen = screenWidth < 600;
@@ -1223,7 +1187,6 @@ class _UserDashboardScreenState extends State<UserDashboardScreen>
       ),
     );
   }
-
   Widget _buildSearchBar(double horizontalPadding) {
     return Padding(
       padding: EdgeInsets.symmetric(horizontal: horizontalPadding),

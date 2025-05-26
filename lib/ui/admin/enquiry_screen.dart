@@ -89,10 +89,6 @@ class _EnquiryTabState extends State<EnquiryTab> {
         });
 
         if (connected) {
-          // Fluttertoast.showToast(
-          //   msg: "Internet connection restored",
-          //   backgroundColor: const Color(0xff185794),
-          // );
           await Future.delayed(
               const Duration(milliseconds: 500)); // allow stabilization
           _loadPage(widget.currentPage);
@@ -186,7 +182,6 @@ class _EnquiryTabState extends State<EnquiryTab> {
       timeInSecForIosWeb: 3,
     );
   }
-
 
   Future<bool> _requestFileOperationPermissions() async {
     // Check current connection first
