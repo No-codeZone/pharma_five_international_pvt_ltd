@@ -1,15 +1,12 @@
 import 'dart:async';
 import 'dart:io';
-
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:flutter/material.dart';
 import 'package:lottie/lottie.dart';
 import 'package:pharma_five/ui/doctor/website_reference_link.dart';
 import 'package:url_launcher/url_launcher.dart';
-
 import '../../helper/shared_preferences.dart';
 import '../../service/api_service.dart';
-import '../admin/widget/reference_web_view_screen.dart';
 import '../login_screen.dart';
 
 class InfoScreen extends StatefulWidget {
@@ -29,6 +26,7 @@ class _InfoScreenState extends State<InfoScreen>
   bool _isConnected = true;
   final Connectivity _connectivity = Connectivity();
   late StreamSubscription<List<ConnectivityResult>> _connectivitySubscription;
+  bool _isDeletingAccount = false;
 
   @override
   void initState() {
@@ -175,7 +173,6 @@ class _InfoScreenState extends State<InfoScreen>
       _validateUserAndLoadData();
     }
   }
-
   // Get color based on status
   Color _getStatusColor(String status) {
     switch (status.toLowerCase()) {
@@ -191,7 +188,6 @@ class _InfoScreenState extends State<InfoScreen>
         return Colors.grey;
     }
   }
-
   // Get status display text
   String _getStatusText() {
     switch (_userStatus.toLowerCase()) {
@@ -231,6 +227,60 @@ class _InfoScreenState extends State<InfoScreen>
     }
   }
 
+  Future<void> _deleteAccount() async {
+    setState(() {
+      _isDeletingAccount = true;
+    });
+
+    try {
+      final email = await SharedPreferenceHelper.getUserEmail();
+      if (email != null && email.isNotEmpty) {
+        final result = await ApiService().deleteUser(userEmail: email);
+
+        if (result['success'] == true) {
+          await SharedPreferenceHelper.clearSession();
+
+          if (mounted) {
+            Navigator.pushAndRemoveUntil(
+              context,
+              MaterialPageRoute(builder: (context) => const LoginScreen()),
+                  (route) => false,
+            );
+
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text(result['message'] ?? 'Account deleted successfully'),
+                backgroundColor: Colors.green,
+                duration: const Duration(seconds: 3),
+              ),
+            );
+          }
+        } else {
+          throw Exception(result['message'] ?? 'Failed to delete account');
+        }
+      } else {
+        throw Exception('User email not found');
+      }
+    } catch (e) {
+      debugPrint('Delete account failed: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Failed to delete account: ${e.toString().replaceAll('Exception: ', '')}'),
+            backgroundColor: Colors.red,
+            duration: const Duration(seconds: 4),
+          ),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isDeletingAccount = false;
+        });
+      }
+    }
+  }
+
   Widget _buildInactiveAppBar() {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 16),
@@ -250,16 +300,22 @@ class _InfoScreenState extends State<InfoScreen>
                 const Icon(Icons.local_pharmacy, size: 40, color: Colors.blue),
               ),
             ),
-            // const Center(
-            //   child: Text(
-            //     "Information",
-            //     style: TextStyle(
-            //       fontSize: 20,
-            //       fontWeight: FontWeight.bold,
-            //       color: Colors.black,
-            //     ),
-            //   ),
-            // ),
+            // Menu button for inactive users
+            /*Align(
+              alignment: Alignment.centerRight,
+              child: IconButton(
+                onPressed: _showMenuOptions,
+                icon: const Icon(Icons.more_vert, color: Colors.black87),
+              ),
+            ),*/
+            if (_userStatus.toLowerCase() == 'active')
+              Align(
+                alignment: Alignment.centerRight,
+                child: IconButton(
+                  onPressed: _showMenuOptions,
+                  icon: const Icon(Icons.more_vert, color: Colors.black87),
+                ),
+              ),
           ],
         ),
       ),
@@ -284,17 +340,17 @@ class _InfoScreenState extends State<InfoScreen>
                 ),
               ),
             ),
-            // const Align(
-            //   alignment: Alignment.center,
-            //   child: Text(
-            //     "Information",
-            //     style: TextStyle(
-            //       fontSize: 20,
-            //       fontWeight: FontWeight.bold,
-            //       color: Colors.black,
-            //     ),
-            //   ),
-            // ),
+            // Menu button for active users
+            Align(
+              alignment: Alignment.centerRight,
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 12),
+                child: IconButton(
+                  onPressed: _showMenuOptions,
+                  icon: const Icon(Icons.more_vert, color: Colors.black87),
+                ),
+              ),
+            ),
           ],
         ),
       ),
@@ -442,7 +498,7 @@ class _InfoScreenState extends State<InfoScreen>
                 "Information about new cancer treatments that are not available in India is often scattered and difficult to find.\n\n"
                     "Our goal with this app is to centralize that information — all in one place — and make it easily accessible to oncologists with just one press, simplifying medical decision-making.\n\n"
                     "The Can-Search app acts as a ready reckoner for oncologists, providing quick access to new cancer medications, available strengths, and prescribing information.\n\n"
-                    "Once a treatment is selected, Pharma Five International Pvt. Ltd., through its global network and expertise, ensures the medicine reaches the patient's doorstep.\n\n"
+                    "Once a treatment is selected, Pharma Five International Pv. Ltd., through its global network and expertise, ensures the medicine reaches the patient's doorstep.\n\n"
                     "This app is dedicated to all the committed oncologists across the country.",
                 style: TextStyle(fontSize: 15, height: 1.6, color: Colors.black87),
               ),
@@ -575,65 +631,147 @@ class _InfoScreenState extends State<InfoScreen>
     );
   }
 
-  void _showLogoutDialog() {
-    showDialog(
+  void _showMenuOptions() {
+    showModalBottomSheet(
       context: context,
+      backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
       builder: (BuildContext context) {
-        return AlertDialog(
-          backgroundColor: Colors.white,
-          shape: RoundedRectangleBorder(
-            borderRadius: const BorderRadius.vertical(top: Radius.circular(10)),
-            side: BorderSide(color: Colors.grey.shade300),
-          ),
-          content: const Text(
-            'Are you sure you want to logout?',
-            textAlign: TextAlign.center,
-            style: TextStyle(fontSize: 16, color: Colors.black87),
-          ),
-          actions: [
-            const SizedBox(height: 20),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        return SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.all(20),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
               children: [
-                SizedBox(
-                  height: 30,
-                  child: ElevatedButton(
-                    onPressed: () {
-                      Navigator.of(context).pop();
-                    },
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.white,
-                      foregroundColor: Colors.black,
-                      shape: const RoundedRectangleBorder(
-                        borderRadius: BorderRadius.all(Radius.circular(10)),
-                      ),
-                      side: const BorderSide(color: Color(0xff262A88)),
-                      elevation: 0,
-                    ),
-                    child: const Text('Cancel'),
+                Container(
+                  width: 40,
+                  height: 4,
+                  decoration: BoxDecoration(
+                    color: Colors.grey[300],
+                    borderRadius: BorderRadius.circular(2),
                   ),
                 ),
-                const Expanded(child: SizedBox(width: 80)),
-                SizedBox(
-                  height: 30,
-                  child: ElevatedButton(
-                    onPressed: () {
-                      Navigator.of(context).pop();
-                      _logout();
-                    },
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.red,
-                      foregroundColor: Colors.white,
-                      shape: const RoundedRectangleBorder(
-                        borderRadius: BorderRadius.all(Radius.circular(10)),
-                      ),
-                    ),
-                    child: const Text('Logout'),
-                  ),
+                const SizedBox(height: 20),
+                ListTile(
+                  leading: const Icon(Icons.delete_forever, color: Colors.red),
+                  title: const Text('Delete Account',
+                      style: TextStyle(color: Colors.red)),
+                  onTap: () {
+                    Navigator.pop(context);
+                    _showDeleteAccountDialog();
+                  },
                 ),
+                // const SizedBox(height: 20),
               ],
             ),
-          ],
+          ),
+        );
+      },
+    );
+  }
+
+  void _showDeleteAccountDialog() {
+    showDialog(
+      context: context,
+      barrierDismissible: !_isDeletingAccount, // Prevent dismissing while deleting
+      builder: (BuildContext context) {
+        return StatefulBuilder(
+          builder: (context, setDialogState) {
+            return AlertDialog(
+              backgroundColor: Colors.white,
+              shape: RoundedRectangleBorder(
+                borderRadius: const BorderRadius.vertical(top: Radius.circular(10)),
+                side: BorderSide(color: Colors.grey.shade300),
+              ),
+              title: const Text(
+                'Delete Account',
+                style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold),
+                textAlign: TextAlign.center,
+              ),
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Icon(Icons.warning, color: Colors.red, size: 48),
+                  const SizedBox(height: 16),
+                  const Text(
+                    'This action cannot be undone. All your data will be permanently deleted.',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(fontSize: 16, color: Colors.black87),
+                  ),
+                  const SizedBox(height: 8),
+                  const Text(
+                    'Are you sure you want to delete your account?',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(fontSize: 16, color: Colors.black87, fontWeight: FontWeight.w600),
+                  ),
+                  if (_isDeletingAccount) ...[
+                    const SizedBox(height: 20),
+                    const CircularProgressIndicator(color: Colors.red),
+                    const SizedBox(height: 10),
+                    const Text(
+                      'Deleting account...',
+                      style: TextStyle(color: Colors.grey),
+                    ),
+                  ],
+                ],
+              ),
+              actions: [
+                const SizedBox(height: 20),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    SizedBox(
+                      height: 30,
+                      child: ElevatedButton(
+                        onPressed: _isDeletingAccount ? null : () {
+                          Navigator.of(context).pop();
+                        },
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.white,
+                          foregroundColor: Colors.black,
+                          shape: const RoundedRectangleBorder(
+                            borderRadius: BorderRadius.all(Radius.circular(10)),
+                          ),
+                          side: const BorderSide(color: Color(0xff262A88)),
+                          elevation: 0,
+                        ),
+                        child: const Text('Cancel'),
+                      ),
+                    ),
+                    const Expanded(child: SizedBox(width: 80)),
+                    SizedBox(
+                      height: 30,
+                      child: ElevatedButton(
+                        onPressed: _isDeletingAccount ? null : () {
+                          Navigator.of(context).pop();
+                          _deleteAccount();
+                        },
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.red,
+                          foregroundColor: Colors.white,
+                          shape: const RoundedRectangleBorder(
+                            borderRadius: BorderRadius.all(Radius.circular(10)),
+                          ),
+                        ),
+                        child: _isDeletingAccount
+                            ? const SizedBox(
+                          width: 16,
+                          height: 16,
+                          child: CircularProgressIndicator(
+                            color: Colors.white,
+                            strokeWidth: 2,
+                          ),
+                        )
+                            : const Text('Delete'),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            );
+          },
         );
       },
     );

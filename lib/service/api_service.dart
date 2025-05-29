@@ -919,6 +919,34 @@ class ApiService {
     throw Exception("Failed to load enquiry #$id (${res.statusCode})");
   }
 
+  ///Delete user account API
+  Future<Map<String, dynamic>> deleteUser({required String userEmail}) async {
+    final url = Uri.parse('$baseUrl$userUpdateAPI');
+
+    final requestBody = {
+      "email": userEmail,
+      "status": "Deleted"
+    };
+
+    try {
+      final response = await http.put(
+        url,
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: json.encode(requestBody),
+      );
+
+      if (response.statusCode == 200) {
+        return json.decode(response.body);
+      } else {
+        throw Exception('Failed to delete user: ${response.statusCode}');
+      }
+    } catch (e) {
+      throw Exception('Network error: $e');
+    }
+  }
+
 
   // Helper method to map backend status to frontend display status
   String _mapStatusToFrontend(String backendStatus) {

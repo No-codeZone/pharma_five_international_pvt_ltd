@@ -1267,7 +1267,7 @@ class _ReportTabState extends State<ReportTab> with SingleTickerProviderStateMix
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         const Padding(
-          padding: EdgeInsets.only(left: 12.0, top: 10, bottom: 8),
+          padding: EdgeInsets.only(left: 40.0, top: 10, bottom: 2), // Reduced bottom padding from 8 to 2
           child: Text(
             "TOP PRODUCT SEARCHES",
             style: TextStyle(
@@ -1280,7 +1280,8 @@ class _ReportTabState extends State<ReportTab> with SingleTickerProviderStateMix
         Expanded(
           child: ListView.builder(
             itemCount: logs.length,
-            padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 12),
+            padding: EdgeInsets.only(bottom: 2), // Reduced vertical padding from 6 to 2
+            // padding: const EdgeInsets.symmetric(vertical: 2), // Reduced vertical padding from 6 to 2
             itemBuilder: (context, index) {
               final log = logs[index];
               final count = log.count ?? 0;
@@ -1307,15 +1308,14 @@ class _ReportTabState extends State<ReportTab> with SingleTickerProviderStateMix
                     ),
                     const SizedBox(width: 10),
 
-                    // Right: Bar with tooltip
+                    // Right: Bar with overlay text
                     Expanded(
-                      child:
-                      Tooltip(
+                      child: Tooltip(
                         message: "$count search${count != 1 ? 'es' : ''} for \"$displayText\"",
-                        preferBelow: false, // Tooltip appears above the bar
-                        verticalOffset: 20, // Distance between bar and tooltip
-                        waitDuration: const Duration(milliseconds: 300), // Delay before showing
-                        showDuration: const Duration(seconds: 3), // Visible duration
+                        preferBelow: false,
+                        verticalOffset: 20,
+                        waitDuration: const Duration(milliseconds: 300),
+                        showDuration: const Duration(seconds: 3),
                         decoration: BoxDecoration(
                           color: Colors.black87,
                           borderRadius: BorderRadius.circular(10),
@@ -1328,31 +1328,47 @@ class _ReportTabState extends State<ReportTab> with SingleTickerProviderStateMix
                             color: Colors.grey.shade200,
                             borderRadius: BorderRadius.circular(6),
                           ),
-                          child: FractionallySizedBox(
-                            widthFactor: count / maxCount,
-                            alignment: Alignment.centerLeft,
-                            child: Container(
-                              height: barHeight,
-                              decoration: BoxDecoration(
-                                gradient: LinearGradient(
-                                  colors: [_accentColor, const Color(0xff7AB0FF)],
-                                  begin: Alignment.centerLeft,
-                                  end: Alignment.centerRight,
+                          child: Stack(
+                            children: [
+                              // Background bar (filled portion)
+                              Align(
+                                alignment: Alignment.centerLeft,
+                                child: FractionallySizedBox(
+                                  widthFactor: count / maxCount,
+                                  child: Container(
+                                    height: barHeight,
+                                    decoration: BoxDecoration(
+                                      gradient: LinearGradient(
+                                        colors: [_accentColor, const Color(0xff7AB0FF)],
+                                        begin: Alignment.centerLeft,
+                                        end: Alignment.centerRight,
+                                      ),
+                                      borderRadius: BorderRadius.circular(6),
+                                    ),
+                                  ),
                                 ),
-                                borderRadius: BorderRadius.circular(6),
                               ),
-                              alignment: Alignment.centerLeft,
-                              padding: const EdgeInsets.symmetric(horizontal: 8),
-                              child: Text(
-                                truncatedText,
-                                style: const TextStyle(
-                                  fontSize: 11,
-                                  fontWeight: FontWeight.w600,
-                                  color: Colors.white,
+                              // Overlay text (spans the entire bar width)
+                              Positioned.fill(
+                                child: Align(
+                                  alignment: Alignment.centerLeft,
+                                  child: Padding(
+                                    padding: const EdgeInsets.symmetric(horizontal: 8),
+                                    child: Text(
+                                      truncatedText,
+                                      style: TextStyle(
+                                        fontSize: 11,
+                                        fontWeight: FontWeight.w600,
+                                        color: count / maxCount > 0.3
+                                            ? Colors.white
+                                            : Colors.black87, // Dark text for light bars
+                                      ),
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                  ),
                                 ),
-                                overflow: TextOverflow.ellipsis,
                               ),
-                            ),
+                            ],
                           ),
                         ),
                       ),
