@@ -26,8 +26,10 @@ import '../model/view_enquiry_response_model.dart';
 
 class ApiService {
   // Base URL for API endpoints
-  final String baseUrl = "http://13.49.224.44:8080/api/registration";
-  final String baseUrlProduct = "http://13.49.224.44:8080/api";
+  // final String baseUrl = "http://13.49.224.44:8080/api/registration";
+  // final String baseUrlProduct = "http://13.49.224.44:8080/api";
+  final String baseUrl = "http://3.108.165.154:8080/api/registration";
+  final String baseUrlProduct = "http://3.108.165.154:8080/api";
 
   // Admin credentials - in a real app, these should be stored securely
   // or managed through a proper backend system
