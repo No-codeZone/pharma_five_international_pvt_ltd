@@ -486,7 +486,7 @@ class _ReportTabState extends State<ReportTab> with SingleTickerProviderStateMix
         return;
       }
 
-      final url = Uri.parse("http://13.49.224.44:8080/api/product/search-logs?days=$_selectedDayFilter&download=true");
+      final url = Uri.parse("http://3.108.165.154:8080/api/product/search-logs?days=$_selectedDayFilter&download=true");
       final filename = "product_search_logs_${DateTime.now().millisecondsSinceEpoch}.xlsx";
       final downloadPath = "${directory.path}/$filename";
 

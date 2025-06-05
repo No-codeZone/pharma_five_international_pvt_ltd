@@ -1011,7 +1011,7 @@ class _ProductListTabState extends State<ProductListTab> {
         return;
       }
 
-      final url = Uri.parse("http://13.49.224.44:8080/api/product/download");
+      final url = Uri.parse("http://3.108.165.154:8080/api/product/download");
       final filename = "product_list_${DateTime.now().millisecondsSinceEpoch}.xlsx";
       final downloadPath = "${directory.path}/$filename";
 
