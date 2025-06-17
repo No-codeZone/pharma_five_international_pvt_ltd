@@ -138,7 +138,7 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
                 opacity: _animation,
                 child: Image.asset(
                   'assets/images/logo_pf.png',
-                  height: 150,
+                  height: 200,
                 ),
               ),
             ),

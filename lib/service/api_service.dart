@@ -6,6 +6,8 @@ import 'package:http/http.dart' as http;
 import '../helper/shared_preferences.dart';
 import '../model/add_product_request_model.dart';
 import '../model/all_enquiry_response_model.dart';
+import '../model/delete_enquiry_request_model.dart';
+import '../model/delete_enquiry_response_model.dart';
 import '../model/get_field_product_listing_model.dart';
 import '../model/get_product_listing_response_model.dart';
 import '../model/get_product_more_response_model.dart';
@@ -22,14 +24,17 @@ import '../model/request_enquiry_model.dart';
 import '../model/response_enquiry_model.dart';
 import '../model/update_product_listing_request_model.dart';
 import '../model/update_product_listing_response_model.dart';
+import '../model/view_enquiry_request_model.dart';
 import '../model/view_enquiry_response_model.dart';
+import 'package:path_provider/path_provider.dart';
+import 'package:permission_handler/permission_handler.dart';
 
 class ApiService {
   // Base URL for API endpoints
-  // final String baseUrl = "http://13.49.224.44:8080/api/registration";
-  // final String baseUrlProduct = "http://13.49.224.44:8080/api";
-  final String baseUrl = "http://3.108.165.154:8080/api/registration";
-  final String baseUrlProduct = "http://3.108.165.154:8080/api";
+  // final String baseUrl = "http://13.49.224.44/api/registration";
+  // final String baseUrlProduct = "http://13.49.224.44/api";
+  final String baseUrl = "http://13.233.209.211:8080/api/registration";
+  final String baseUrlProduct = "http://13.233.209.211:8080/api";
 
   // Admin credentials - in a real app, these should be stored securely
   // or managed through a proper backend system
@@ -47,6 +52,7 @@ class ApiService {
   final String addProductAPI="/product/add";   //baseUrlProduct
   final String deleteProductAPI="/product/delete/";   //baseUrlProduct
   final String bulkProductAPI="/product/upload";   //baseUrlProduct
+  final String downloadTemplateAPI="/product/download-template";   //baseUrlProduct
   final String enquiryProductAPI="/enquiry/add";   //baseUrlProduct
   final String enquiryAllProductAPI="/enquiry/all";   //baseUrlProduct
   final String viewEnquiryAPI="/enquiry/";   //baseUrlProduct
@@ -899,7 +905,9 @@ class ApiService {
     final response = await http.get(uri);
 
     if (response.statusCode == 200) {
+      debugPrint("Response for all fetched enquires\t${response.body}");
       final Map<String, dynamic> jsonBody = json.decode(response.body);
+      debugPrint("Response body for all fetched enquires\t$jsonBody");
       return AllEnquiryResponseModel.fromJson(jsonBody);
     } else {
       // You can customize error handling here
@@ -910,15 +918,107 @@ class ApiService {
   }
 
   ///View enquiry details API
-  Future<ViewEnquiryResponseModel> fetchEnquiryById(int id) async {
-    final uri = Uri.parse("$baseUrlProduct$viewEnquiryAPI$id");
-    final res = await http.get(uri);
+  Future<ViewEnquiryData?> fetchEnquiryById(int id) async {
+    final uri = Uri.parse("$baseUrlProduct/enquiry/$id/update-status");
+    final requestModel = ViewEnquiryRequestModel(read: 1); // or 0 if unread
+    final res = await http.put(
+      uri,
+      headers: {"Content-Type": "application/json"},
+      body: jsonEncode(requestModel.toJson()),
+    );
+    print("Request URL: $uri");
+    print("Status Code: ${res.statusCode}");
+    print("Response Body: ${res.body}");
     if (res.statusCode == 200) {
-      return ViewEnquiryResponseModel.fromJson(
-        json.decode(res.body) as Map<String, dynamic>,
+      final decoded = json.decode(res.body);
+      final model = ViewEnquiryResponseModel.fromJson(decoded);
+      return model.data;
+    } else {
+      throw Exception("Failed to fetch enquiry with id $id (${res.statusCode})");
+    }
+  }
+
+  ///Delete enquiry details API
+  Future<DeleteEnquiryData?> deleteEnquiryById(int id) async {
+    final uri = Uri.parse("$baseUrlProduct/enquiry/$id/update-status");
+    final requestModel = DeleteEnquiryRequestModel(status: true);
+
+    final res = await http.put(
+      uri,
+      headers: {"Content-Type": "application/json"},
+      body: jsonEncode(requestModel.toJson()),
+    );
+
+    print("DELETE ENQUIRY → $uri");
+    print("Status Code: ${res.statusCode}");
+    print("Response: ${res.body}");
+
+    if (res.statusCode == 200) {
+      final decoded = json.decode(res.body);
+      final model = DeleteEnquiryResponseModel.fromJson(decoded);
+      return model.data;
+    } else {
+      throw Exception("Failed to delete enquiry with id $id (${res.statusCode})");
+    }
+  }
+
+  ///Download bulk upload template
+  Future<void> downloadTemplateFile(BuildContext context) async {
+    const String baseUrlProduct = "http://13.233.209.211:8080/api";
+    const String endpoint = "/product/download-template";
+    final String url = "$baseUrlProduct$endpoint";
+
+    try {
+      // Request permissions
+      if (Platform.isAndroid) {
+        final status = await Permission.storage.request();
+        if (!status.isGranted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Storage permission denied.'),
+              backgroundColor: Colors.red,
+            ),
+          );
+          return;
+        }
+      }
+
+      final response = await http.get(Uri.parse(url));
+
+      if (response.statusCode == 200) {
+        final directory = await getExternalStorageDirectory();
+        final String filePath = "${directory!.path}/Product_Template.xlsx";
+
+        final File file = File(filePath);
+        await file.writeAsBytes(response.bodyBytes);
+
+        debugPrint("Excel template downloaded to: $filePath");
+
+        // ✅ Toast the download path
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Template downloaded at:\n$filePath'),
+            backgroundColor: Colors.green,
+            duration: const Duration(seconds: 5),
+          ),
+        );
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Failed to download. Status: ${response.statusCode}'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    } catch (e) {
+      print("Error downloading template: $e");
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Download failed: $e'),
+          backgroundColor: Colors.red,
+        ),
       );
     }
-    throw Exception("Failed to load enquiry #$id (${res.statusCode})");
   }
 
   ///Delete user account API

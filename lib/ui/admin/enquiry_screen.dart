@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
 import 'dart:math';
 import 'package:device_info_plus/device_info_plus.dart';
@@ -446,6 +447,119 @@ class _EnquiryTabState extends State<EnquiryTab> {
     );
   }
 
+  Future<void> _markEnquiryAsRead(int id) async {
+    final url = Uri.parse("http://13.233.209.211:8080/api/enquiry/$id/update-status");
+
+    try {
+      final response = await http.put(
+        url,
+        headers: {"Content-Type": "application/json"},
+        body: jsonEncode({"read": 1}), // ✅ must be int, not bool
+      );
+
+      if (response.statusCode == 200) {
+        setState(() {
+          final index = _items.indexWhere((e) => e.id == id);
+          if (index != -1) {
+            _items[index] = EnquiryItem(
+              id: _items[index].id,
+              productName: _items[index].productName,
+              userName: _items[index].userName,
+              status: EnquiryStatus.viewed,
+            );
+          }
+        });
+      } else {
+        _showToast("Failed to mark as read: ${response.statusCode}", isError: true);
+      }
+    } catch (e) {
+      _showToast("Error marking enquiry as read: $e", isError: true);
+    }
+  }
+
+  Future<void> _markEnquiryAsDeleted(int id) async {
+    try {
+      final deletedData = await ApiService().deleteEnquiryById(id);
+
+      if (deletedData != null) {
+        setState(() {
+          _items.removeWhere((e) => e.id == id);
+        });
+        _showToast("Enquiry deleted successfully");
+      } else {
+        _showToast("Delete failed: No data returned", isError: true);
+      }
+    } catch (e) {
+      _showToast("Error deleting enquiry: $e", isError: true);
+    }
+  }
+
+  void _confirmDeleteEnquiry(int id) {
+    showDialog(
+      context: context,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          backgroundColor: Colors.white,
+          shape: RoundedRectangleBorder(
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(10)),
+            side: BorderSide(color: Colors.grey.shade300),
+          ),
+          content: const Text(
+            'Do you want to delete this enquiry?',
+            textAlign: TextAlign.center,
+          ),
+          actions: [
+            const SizedBox(height: 20),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                SizedBox(
+                  height: 30,
+                  child: ElevatedButton(
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.white,
+                      foregroundColor: Colors.black,
+                      shape: const RoundedRectangleBorder(
+                          borderRadius: BorderRadius.all(Radius.circular(10))),
+                      side: const BorderSide(color: Color(0xff262A88)),
+                    ),
+                    child: const Padding(
+                      padding: EdgeInsets.all(2.0),
+                      child: Text('Cancel'),
+                    ),
+                    onPressed: () {
+                      Navigator.of(context).pop();
+                    },
+                  ),
+                ),
+                const Expanded(child: SizedBox(width: 80)),
+                SizedBox(
+                  height: 30,
+                  child: ElevatedButton(
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.red,
+                      foregroundColor: Colors.white,
+                      shape: const RoundedRectangleBorder(
+                          borderRadius: BorderRadius.all(Radius.circular(10))),
+                    ),
+                    child: const Padding(
+                      padding: EdgeInsets.all(2.0),
+                      child: Text('Yes, Delete'),
+                    ),
+                    onPressed: () async {
+                      Navigator.of(context).pop();
+                      await _markEnquiryAsDeleted(id);
+                    },
+                  ),
+                ),
+              ],
+            ),
+          ],
+        );
+      },
+    );
+  }
+
   Future<Directory?> _getAppropriateDirectory() async {
     Directory? directory;
 
@@ -509,7 +623,7 @@ class _EnquiryTabState extends State<EnquiryTab> {
         return;
       }
 
-      final url = Uri.parse("http://3.108.165.154:8080/api/enquiry/download");
+      final url = Uri.parse("http://13.233.209.211:8080/api/enquiry/download");
       final filename = "enquiry_list_${DateTime.now().millisecondsSinceEpoch}.xlsx";
       final downloadPath = "${directory.path}/$filename";
 
@@ -628,19 +742,20 @@ class _EnquiryTabState extends State<EnquiryTab> {
       context: context,
       barrierDismissible: false,
       builder: (_) => const Center(
-          child: CircularProgressIndicator(color: Color(0xff185794))),
+        child: CircularProgressIndicator(color: Color(0xff185794)),
+      ),
     );
 
     try {
-      final resp = await ApiService().fetchEnquiryById(id);
+      final d = await ApiService().fetchEnquiryById(id); // returns EnquiryItem?
       Navigator.pop(context); // remove loader
 
-      final d = resp.data!;
+      if (d == null) throw Exception("No enquiry found");
+
       await showDialog(
         context: context,
         builder: (_) => Dialog(
-          insetPadding:
-              const EdgeInsets.symmetric(horizontal: 20, vertical: 60),
+          insetPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 60),
           backgroundColor: Colors.transparent,
           child: Stack(
             clipBehavior: Clip.none,
@@ -676,85 +791,32 @@ class _EnquiryTabState extends State<EnquiryTab> {
                       width: 40,
                       color: const Color(0xff185794).withOpacity(0.5),
                     ),
-                    const SizedBox(height: 24), // Increased spacing
+                    const SizedBox(height: 24),
 
-                    // Regular items
-                    _buildInteractiveItem(
-                      label: "Medicine Name",
-                      value: productName,
-                      icon: Icons.medication,
-                      isInteractive: false,
-                    ),
-                    _buildInteractiveItem(
-                      label: "Generic Name",
-                      value: d.genericName,
-                      icon: Icons.medication_outlined,
-                      isInteractive: false,
-                    ),
-                    _buildInteractiveItem(
-                      label: "User Name",
-                      value: userName,
-                      icon: Icons.person,
-                      isInteractive: false,
-                    ),
-
-                    // Interactive items with actions
-                    _buildInteractiveItem(
-                      label: "Mobile",
-                      value: d.mobileNumber,
-                      icon: Icons.phone,
-                      onTap: () => _handlePhoneNumberTap(d.mobileNumber ?? ""),
-                    ),
-                    _buildInteractiveItem(
-                      label: "Email",
-                      value: d.email,
-                      icon: Icons.email,
-                      onTap: () => _handleEmailTap(d.email ?? ""),
-                    ),
-                    _buildInteractiveItem(
-                      label: "Organisation",
-                      value: d.organisationName,
-                      icon: Icons.business,
-                      isInteractive: false,
-                    ),
-                    _buildInteractiveItem(
-                      label: "Enquired",
-                      // Changed from "Created" to "Enquired"
-                      value: formatDateTime(d.createdDatetime),
-                      icon: Icons.calendar_today,
-                      isInteractive: false,
-                    ),
+                    _buildInteractiveItem(label: "Medicine Name", value: productName, icon: Icons.medication, isInteractive: false),
+                    _buildInteractiveItem(label: "User Name", value: userName, icon: Icons.person, isInteractive: false),
+                    _buildInteractiveItem(label: "Generic Name", value: d.genericName, icon: Icons.medication_outlined, isInteractive: false),
+                    _buildInteractiveItem(label: "Mobile", value: d.mobileNumber, icon: Icons.phone, onTap: () => _handlePhoneNumberTap(d.mobileNumber)),
+                    _buildInteractiveItem(label: "Email", value: d.email, icon: Icons.email, onTap: () => _handleEmailTap(d.email)),
+                    _buildInteractiveItem(label: "Organisation", value: d.organisationName, icon: Icons.business, isInteractive: false),
+                    _buildInteractiveItem(label: "Enquired", value: formatDateTime(d.createdDatetime), icon: Icons.calendar_today, isInteractive: false),
 
                     const SizedBox(height: 20),
                     ElevatedButton.icon(
                       onPressed: () {
-                        Navigator.pop(context);
-                        _refresh();
+                        Navigator.pop(context); // close dialog
                       },
-                      icon: const Icon(
-                        Icons.close,
-                        size: 18,
-                        color: Colors.white,
-                      ),
-                      label: const Text(
-                        "Close",
-                        style: TextStyle(color: Colors.white),
-                      ),
+                      icon: const Icon(Icons.close, size: 18, color: Colors.white),
+                      label: const Text("Close", style: TextStyle(color: Colors.white)),
                       style: ElevatedButton.styleFrom(
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 24, vertical: 12),
-                        // Increased vertical padding
+                        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
                         backgroundColor: const Color(0xff185794),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(30),
-                        ),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(30)),
                       ),
                     ),
                   ],
                 ),
               ),
-
-              // Floating Icon at Top
               Positioned(
                 top: -28,
                 left: 0,
@@ -762,28 +824,24 @@ class _EnquiryTabState extends State<EnquiryTab> {
                 child: CircleAvatar(
                   radius: 28,
                   backgroundColor: Colors.white,
-                  child: Icon(Icons.info_outline,
-                      size: 30, color: Color(0xff185794)),
+                  child: Icon(Icons.info_outline, size: 30, color: Color(0xff185794)),
                 ),
               ),
             ],
           ),
         ),
       );
+
+      await _markEnquiryAsRead(id); // after dialog close
     } catch (e) {
       Navigator.pop(context);
       showDialog(
         context: context,
         builder: (_) => AlertDialog(
-          shape:
-              RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-          title: const Text("Error", style: TextStyle(color: Colors.red)),
+          title: const Text("Error"),
           content: Text("Unable to load enquiry details: $e"),
           actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text("OK"),
-            ),
+            TextButton(onPressed: () => Navigator.pop(context), child: const Text("OK")),
           ],
         ),
       );
@@ -955,25 +1013,28 @@ class _EnquiryTabState extends State<EnquiryTab> {
                             : RefreshIndicator(
                                 onRefresh: _refresh,
                                 color: const Color(0xff185794),
-                                child: _items.isEmpty
-                                    ? Center(
-                                      child: ListView(
-                                        children: [
-                                          SizedBox(
-                                            height: 180,
-                                            width: 180,
-                                            child: Lottie.asset(
-                                                "assets/animations/no_data_found.json",
-                                                width: 60),
-                                          ),
-                                          const SizedBox(height: 12),
-                                          Center(
-                                              child: Text(
-                                                  "No enquiries found.")),
-                                        ],
-                                      ),
-                                    )
-                                    : ListView.builder(
+                      child: _items.isEmpty
+                          ? Center(
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Lottie.asset(
+                              "assets/animations/no_data_found.json",
+                              width: 180,
+                              height: 180,
+                              fit: BoxFit.contain,
+                            ),
+                            const SizedBox(height: 12),
+                            const Text(
+                              "No enquiries found.",
+                              style: TextStyle(
+                                color: Colors.grey,
+                              ),
+                            ),
+                          ],
+                        ),
+                      )
+                          : ListView.builder(
                                         itemCount: _items.length,
                                         itemBuilder: (context, index) =>
                                             _buildEnquiryCard(
@@ -1093,14 +1154,18 @@ class _EnquiryTabState extends State<EnquiryTab> {
               flex: 2,
               child: IconButton(
                 icon: Icon(
-                  isNew ? Icons.visibility_off : Icons.visibility,
-                  color: isNew ? const Color(0xff185794) : Colors.grey,
-                  size: 24, // Increased size for better touch target
+                  isNew ? Icons.visibility_off : Icons.delete_outline,
+                  color: isNew ? const Color(0xff185794) : Colors.red.shade400,
+                  size: 24,
                 ),
-                padding: EdgeInsets.all(8.0),
-                // Added padding for better touch target
-                onPressed: () =>
-                    _viewEnquiry(item.id, item.userName, item.productName),
+                padding: const EdgeInsets.all(8.0),
+                onPressed: () async {
+                  if (isNew) {
+                    await _viewEnquiry(item.id, item.userName, item.productName);
+                  } else {
+                    _confirmDeleteEnquiry(item.id);
+                  }
+                },
               ),
             ),
           ],

@@ -11,6 +11,7 @@ import 'package:pharma_five/service/api_service.dart';
 import 'package:pharma_five/ui/admin/product_details_screen.dart';
 import 'package:pharma_five/ui/admin/product_details_screen_admin.dart';
 import 'package:pharma_five/ui/admin/widget/bulk_upload_widget.dart';
+import 'package:super_tooltip/super_tooltip.dart';
 import '../../model/get_product_listing_response_model.dart';
 import '../../model/get_product_more_response_model.dart';
 import '../../model/product_search_listing_response_model.dart';
@@ -76,6 +77,8 @@ class _ProductListTabState extends State<ProductListTab> {
   bool _hasMore = true;
   bool _isSearchActive = false;
   String _activeSearchTerm = '';
+  SuperTooltip? _tooltip;
+  SuperTooltipController _tooltipController = SuperTooltipController();
 
 
   @override
@@ -992,6 +995,81 @@ class _ProductListTabState extends State<ProductListTab> {
     ); // Remove _isAddingProduct condition
   }
 
+  Future<void> _downloadExcelTemplateFile() async {
+    setState(() => _isLoading = true);
+
+    try {
+      final hasPermission = await _requestFileOperationPermissions();
+      if (!hasPermission) {
+        setState(() => _isLoading = false);
+        return;
+      }
+
+      _showToast("Downloading Excel template...");
+
+      final directory = await _getAppropriateDirectory();
+      if (directory == null) {
+        _showToast("Failed to access storage directory", isError: true);
+        setState(() => _isLoading = false);
+        return;
+      }
+
+      final url = Uri.parse("http://13.233.209.211:8080/api/product/download-template");
+      final filename = "product_template.xlsx";
+      final downloadPath = "${directory.path}/$filename";
+
+      final response = await http.get(url).timeout(
+        const Duration(seconds: 30),
+        onTimeout: () => throw TimeoutException("The connection timed out."),
+      );
+
+      if (response.statusCode == 200) {
+        final file = File(downloadPath);
+        await file.writeAsBytes(response.bodyBytes);
+
+        if (Platform.isIOS) {
+          try {
+            await file.setLastModified(DateTime.now());
+          } catch (e) {
+            debugPrint("iOS file tag error: $e");
+          }
+        }
+
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text("Template downloaded to: $downloadPath"),
+              backgroundColor: const Color(0xff185794),
+              duration: const Duration(seconds: 4),
+              action: SnackBarAction(
+                label: "Open",
+                textColor: Colors.white,
+                onPressed: () async {
+                  try {
+                    await OpenFile.open(downloadPath);
+                  } catch (e) {
+                    _showToast("Unable to open file: $e", isError: true);
+                  }
+                },
+              ),
+            ),
+          );
+        }
+      } else {
+        _showToast("Download failed: ${response.statusCode}", isError: true);
+      }
+    } on SocketException {
+      _showToast("Network error. Please check your internet.", isError: true);
+    } on TimeoutException {
+      _showToast("Download timed out. Please try again.", isError: true);
+    } catch (e) {
+      debugPrint("Download error: $e");
+      _showToast("Unexpected error: $e", isError: true);
+    } finally {
+      setState(() => _isLoading = false);
+    }
+  }
+
   Future<void> _downloadExcelFile() async {
     setState(() => _isLoading = true);
 
@@ -1011,10 +1089,9 @@ class _ProductListTabState extends State<ProductListTab> {
         return;
       }
 
-      final url = Uri.parse("http://3.108.165.154:8080/api/product/download");
+      final url = Uri.parse("http://13.233.209.211:8080/api/product/download");
       final filename = "product_list_${DateTime.now().millisecondsSinceEpoch}.xlsx";
       final downloadPath = "${directory.path}/$filename";
-
       final response = await http.get(url).timeout(
         const Duration(seconds: 30),
         onTimeout: () => throw TimeoutException("The connection timed out."),
@@ -1193,7 +1270,10 @@ class _ProductListTabState extends State<ProductListTab> {
                           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
                         ),
                       ),
+
                       const SizedBox(width: 12),
+
+                      // Bulk Upload Button
                       ElevatedButton.icon(
                         onPressed: () {
                           _showBulkUploadConfirmation(context);
@@ -1422,8 +1502,21 @@ class _ProductListTabState extends State<ProductListTab> {
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                const Text("Upload Bulk Products",
-                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    const Text(
+                      "Upload Bulk Products",
+                      style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                    ),
+                    const SizedBox(width: 6), // spacing between text and icon
+                    IconButton(
+                      tooltip: "Download Excel Template",
+                      onPressed: _downloadExcelTemplateFile,
+                      icon: const Icon(Icons.description_outlined, color: Color(0xff185794)),
+                    ),
+                  ],
+                ),
                 const SizedBox(height: 20),
                 GestureDetector(
                   onTap: _pickAndUploadExcelFile,

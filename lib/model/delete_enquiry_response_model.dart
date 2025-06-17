@@ -1,13 +1,13 @@
-class ViewEnquiryResponseModel {
-  ViewEnquiryData? data;
+class DeleteEnquiryResponseModel {
+  DeleteEnquiryData? data;
   String? responseMessage;
   int? responseCode;
 
-  ViewEnquiryResponseModel(
+  DeleteEnquiryResponseModel(
       {this.data, this.responseMessage, this.responseCode});
 
-  ViewEnquiryResponseModel.fromJson(Map<String, dynamic> json) {
-    data = json['data'] != null ? new ViewEnquiryData.fromJson(json['data']) : null;
+  DeleteEnquiryResponseModel.fromJson(Map<String, dynamic> json) {
+    data = json['data'] != null ? new DeleteEnquiryData.fromJson(json['data']) : null;
     responseMessage = json['responseMessage'];
     responseCode = json['responseCode'];
   }
@@ -23,7 +23,7 @@ class ViewEnquiryResponseModel {
   }
 }
 
-class ViewEnquiryData {
+class DeleteEnquiryData {
   String? genericName;
   String? mobileNumber;
   String? email;
@@ -32,7 +32,7 @@ class ViewEnquiryData {
   int? read;
   int? status;
 
-  ViewEnquiryData(
+  DeleteEnquiryData(
       {this.genericName,
         this.mobileNumber,
         this.email,
@@ -41,7 +41,7 @@ class ViewEnquiryData {
         this.read,
         this.status});
 
-  ViewEnquiryData.fromJson(Map<String, dynamic> json) {
+  DeleteEnquiryData.fromJson(Map<String, dynamic> json) {
     genericName = json['genericName'];
     mobileNumber = json['mobileNumber'];
     email = json['email'];
