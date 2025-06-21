@@ -81,7 +81,7 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
           Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => const UserNavTab()));
           // Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => const UserDashboardScreen()));
         } else {
-          Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => const AdminApprovalScreen()));
+          Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => const UserDashboardScreen()));
         }
       } else {
         Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => const WalkthroughScreen()));

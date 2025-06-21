@@ -2,35 +2,45 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'dart:math';
-import 'package:device_info_plus/device_info_plus.dart';
-import 'package:http/http.dart' as http;
-import 'package:intl/intl.dart';
+
 import 'package:connectivity_plus/connectivity_plus.dart';
+import 'package:device_info_plus/device_info_plus.dart';
 import 'package:flutter/material.dart';
 import 'package:fluttertoast/fluttertoast.dart';
+import 'package:http/http.dart' as http;
+import 'package:intl/intl.dart';
 import 'package:lottie/lottie.dart';
 import 'package:open_file/open_file.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:permission_handler/permission_handler.dart';
+
 import '../../helper/communication_handler.dart';
-import '../../helper/file_downloader_helper.dart';
+import '../../model/view_enquiry_response_model.dart';
 import '../../service/api_service.dart';
 
+enum EnquiryStatus {
+  unread, // When read = 0 or null
+  read // When read = 1
+}
 
-enum EnquiryStatus { newEnquiry, viewed }
+// 2. Update the EnquiryItem class to include more fields for debugging
 class EnquiryItem {
   final int id;
   final String productName;
   final String userName;
-  final EnquiryStatus status;
+
+  // final EnquiryStatus status;
+  final int? readValue; // Add this for debugging
 
   EnquiryItem({
     required this.id,
     required this.productName,
     required this.userName,
-    required this.status,
+    // required this.status,
+    this.readValue,
   });
 }
+
 /// A tab that displays a single page of Enquiries
 /// and lets the parent manage currentPage / onPageChange.
 class EnquiryTab extends StatefulWidget {
@@ -48,6 +58,7 @@ class EnquiryTab extends StatefulWidget {
   @override
   _EnquiryTabState createState() => _EnquiryTabState();
 }
+
 class _EnquiryTabState extends State<EnquiryTab> {
   bool _isLoading = false;
   int _totalPages = 1;
@@ -55,6 +66,7 @@ class _EnquiryTabState extends State<EnquiryTab> {
   final Connectivity _connectivity = Connectivity();
   late StreamSubscription<List<ConnectivityResult>> _connectionSubscription;
   bool _isConnected = true;
+  bool _isMarkingRead = false;
   bool _lastConnectionStatus = true;
 
   @override
@@ -106,7 +118,6 @@ class _EnquiryTabState extends State<EnquiryTab> {
   @override
   void didUpdateWidget(covariant EnquiryTab old) {
     super.didUpdateWidget(old);
-    // If parent changed the page, reload:
     if (old.currentPage != widget.currentPage) {
       _loadPage(widget.currentPage);
     }
@@ -115,26 +126,32 @@ class _EnquiryTabState extends State<EnquiryTab> {
   Future<void> _loadPage(int page) async {
     setState(() {
       _isLoading = true;
-      _items = []; // 👈 clears list immediately to show blank white background
+      _items = [];
     });
 
     try {
       final resp = await ApiService().fetchAllEnquiries(
-        index: page, // or page * pageSize if backend uses offset
+        index: page,
         limit: widget.pageSize,
-        // sortOrder: 'desc', // Add sort parameter to get latest enquiries first
       );
 
-      final fetched = resp.data
-              ?.map((d) => EnquiryItem(
-                    id: d.id ?? 0,
-                    productName: d.medicineName ?? '—',
-                    userName: d.empName ?? '—',
-                    status: d.status == 1
-                        ? EnquiryStatus.newEnquiry
-                        : EnquiryStatus.viewed,
-                  ))
-              .toList() ??
+      final fetched = resp.data?.map((d) {
+            // Simplified status logic
+            final readValue = d.read ?? 0;
+            final itemStatus =
+                readValue == 0 ? EnquiryStatus.unread : EnquiryStatus.read;
+
+            print(
+                'Loading enquiry - ID: ${d.id}, read: $readValue, status: $itemStatus');
+
+            return EnquiryItem(
+              id: d.id ?? 0,
+              productName: d.medicineName ?? '—',
+              userName: d.empName ?? '—',
+              // status: itemStatus,
+              readValue: readValue,
+            );
+          }).toList() ??
           [];
 
       final totalCount = resp.totalCount ?? fetched.length;
@@ -142,6 +159,11 @@ class _EnquiryTabState extends State<EnquiryTab> {
         _items = fetched;
         _totalPages = (totalCount + widget.pageSize - 1) ~/ widget.pageSize;
       });
+
+      print('Current items after loading:');
+      for (var item in _items) {
+        print('ID: ${item.id}, ReadValue: ${item.readValue}');
+      }
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Error loading enquiries: $e')),
@@ -151,11 +173,116 @@ class _EnquiryTabState extends State<EnquiryTab> {
     }
   }
 
+  Widget _buildEnquiryDetailsDialog(
+      ViewEnquiryData d, String userName, String productName) {
+    return Stack(
+      clipBehavior: Clip.none,
+      children: [
+        Container(
+          constraints: const BoxConstraints(maxWidth: 400),
+          padding: const EdgeInsets.fromLTRB(20, 52, 20, 20),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(16),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withOpacity(0.12),
+                blurRadius: 18,
+                offset: const Offset(0, 8),
+              ),
+            ],
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Text(
+                "Enquiry Details",
+                style: TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.w700,
+                  color: Color(0xff185794),
+                ),
+              ),
+              const SizedBox(height: 8),
+              Container(
+                height: 2,
+                width: 40,
+                color: const Color(0xff185794).withOpacity(0.5),
+              ),
+              const SizedBox(height: 24),
+              _buildInteractiveItem(
+                  label: "Medicine Name",
+                  value: productName,
+                  icon: Icons.medication,
+                  isInteractive: false),
+              _buildInteractiveItem(
+                  label: "User Name",
+                  value: userName,
+                  icon: Icons.person,
+                  isInteractive: false),
+              _buildInteractiveItem(
+                  label: "Generic Name",
+                  value: d.genericName,
+                  icon: Icons.medication_outlined,
+                  isInteractive: false),
+              _buildInteractiveItem(
+                  label: "Mobile",
+                  value: d.mobileNumber,
+                  icon: Icons.phone,
+                  onTap: () => _handlePhoneNumberTap(d.mobileNumber)),
+              _buildInteractiveItem(
+                  label: "Email",
+                  value: d.email,
+                  icon: Icons.email,
+                  onTap: () => _handleEmailTap(d.email)),
+              _buildInteractiveItem(
+                  label: "Organisation",
+                  value: d.organisationName,
+                  icon: Icons.business,
+                  isInteractive: false),
+              _buildInteractiveItem(
+                  label: "Enquired",
+                  value: formatDateTime(d.createdDatetime),
+                  icon: Icons.calendar_today,
+                  isInteractive: false),
+              const SizedBox(height: 20),
+              ElevatedButton.icon(
+                onPressed: () => Navigator.pop(context),
+                icon: const Icon(Icons.close, size: 18, color: Colors.white),
+                label:
+                    const Text("Close", style: TextStyle(color: Colors.white)),
+                style: ElevatedButton.styleFrom(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                  backgroundColor: const Color(0xff185794),
+                  shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(30)),
+                ),
+              ),
+            ],
+          ),
+        ),
+        Positioned(
+          top: -28,
+          left: 0,
+          right: 0,
+          child: CircleAvatar(
+            radius: 28,
+            backgroundColor: Colors.white,
+            child: Icon(Icons.info_outline, size: 30, color: Color(0xff185794)),
+          ),
+        ),
+      ],
+    );
+  }
+
   Future<void> _refresh() => _loadPage(widget.currentPage);
+
   // Handle tap on phone number - direct without using url_launcher
   void _handlePhoneNumberTap(String? phoneNumber) {
     CommunicationHandler.makePhoneCall(context, phoneNumber);
   }
+
   // Handle tap on email - direct without using url_launcher
   void _handleEmailTap(String? email) {
     CommunicationHandler.sendEmail(context, email);
@@ -198,7 +325,8 @@ class _EnquiryTabState extends State<EnquiryTab> {
       return await _requestIOSPermissions();
     } else {
       // Default fallback for other platforms
-      _showToast("File operations may not be fully supported on this platform", isError: true);
+      _showToast("File operations may not be fully supported on this platform",
+          isError: true);
       return true;
     }
   }
@@ -219,16 +347,16 @@ class _EnquiryTabState extends State<EnquiryTab> {
         return true;
       }
 
-      if (photosStatus.isPermanentlyDenied || documentsStatus.isPermanentlyDenied) {
-        _showPermissionSettingsDialog(
-            "Media access required",
-            "Access to photos and documents is required for importing and exporting Excel files."
-        );
+      if (photosStatus.isPermanentlyDenied ||
+          documentsStatus.isPermanentlyDenied) {
+        _showPermissionSettingsDialog("Media access required",
+            "Access to photos and documents is required for importing and exporting Excel files.");
         return false;
       }
 
       if (photosStatus.isDenied || documentsStatus.isDenied) {
-        _showToast("Media permissions are required for Excel operations", isError: true);
+        _showToast("Media permissions are required for Excel operations",
+            isError: true);
         return false;
       }
     }
@@ -251,17 +379,14 @@ class _EnquiryTabState extends State<EnquiryTab> {
               "Storage access limited",
               "For full access to manage files, additional permissions are needed. " +
                   "Excel files will be saved to app-specific folders.",
-              isWarningOnly: true
-          );
+              isWarningOnly: true);
         }
         return true;
       }
 
       if (storageStatus.isPermanentlyDenied) {
-        _showPermissionSettingsDialog(
-            "Storage access required",
-            "Storage access is required for importing and exporting Excel files."
-        );
+        _showPermissionSettingsDialog("Storage access required",
+            "Storage access is required for importing and exporting Excel files.");
         return false;
       }
     }
@@ -274,15 +399,14 @@ class _EnquiryTabState extends State<EnquiryTab> {
       }
 
       if (status.isPermanentlyDenied) {
-        _showPermissionSettingsDialog(
-            "Storage access required",
-            "Storage access is required for importing and exporting Excel files."
-        );
+        _showPermissionSettingsDialog("Storage access required",
+            "Storage access is required for importing and exporting Excel files.");
         return false;
       }
     }
 
-    _showToast("Storage permissions are needed for Excel operations", isError: true);
+    _showToast("Storage permissions are needed for Excel operations",
+        isError: true);
     return false;
   }
 
@@ -294,18 +418,18 @@ class _EnquiryTabState extends State<EnquiryTab> {
     }
 
     if (documentsStatus.isPermanentlyDenied) {
-      _showPermissionSettingsDialog(
-          "Storage access required",
-          "This app needs permission to store Excel files in your device's Documents directory."
-      );
+      _showPermissionSettingsDialog("Storage access required",
+          "This app needs permission to store Excel files in your device's Documents directory.");
       return false;
     }
 
-    _showToast("Storage permission is required for Excel file operations.", isError: true);
+    _showToast("Storage permission is required for Excel file operations.",
+        isError: true);
     return false;
   }
 
-  void _showPermissionSettingsDialog(String title, String message, {bool isWarningOnly = false}) {
+  void _showPermissionSettingsDialog(String title, String message,
+      {bool isWarningOnly = false}) {
     final ThemeData theme = Theme.of(context);
     final Color primaryColor = const Color(0xff185794);
 
@@ -315,7 +439,8 @@ class _EnquiryTabState extends State<EnquiryTab> {
       builder: (BuildContext context) => AlertDialog(
         backgroundColor: Colors.white,
         shape: RoundedRectangleBorder(
-          borderRadius: const BorderRadius.vertical(top: Radius.circular(10), bottom: Radius.circular(10)),
+          borderRadius: const BorderRadius.vertical(
+              top: Radius.circular(10), bottom: Radius.circular(10)),
           side: BorderSide(color: Colors.grey.shade300),
         ),
         title: Text(
@@ -442,21 +567,23 @@ class _EnquiryTabState extends State<EnquiryTab> {
             ],
           ),
         ],
-        actionsPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+        actionsPadding:
+            const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
       ),
     );
   }
 
   Future<void> _markEnquiryAsRead(int id) async {
-    final url = Uri.parse("http://13.233.209.211:8080/api/enquiry/$id/update-status");
-
+    if (_isMarkingRead) return;
+    _isMarkingRead = true;
+    final url =
+        Uri.parse("http://13.233.209.211:8080/api/enquiry/$id/update-status");
     try {
       final response = await http.put(
         url,
         headers: {"Content-Type": "application/json"},
-        body: jsonEncode({"read": 1}), // ✅ must be int, not bool
+        body: jsonEncode({"read": 1}),
       );
-
       if (response.statusCode == 200) {
         setState(() {
           final index = _items.indexWhere((e) => e.id == id);
@@ -465,15 +592,15 @@ class _EnquiryTabState extends State<EnquiryTab> {
               id: _items[index].id,
               productName: _items[index].productName,
               userName: _items[index].userName,
-              status: EnquiryStatus.viewed,
+              // status: EnquiryStatus.read,
             );
           }
         });
-      } else {
-        _showToast("Failed to mark as read: ${response.statusCode}", isError: true);
       }
     } catch (e) {
       _showToast("Error marking enquiry as read: $e", isError: true);
+    } finally {
+      _isMarkingRead = false;
     }
   }
 
@@ -548,7 +675,10 @@ class _EnquiryTabState extends State<EnquiryTab> {
                     ),
                     onPressed: () async {
                       Navigator.of(context).pop();
+                      // await _markEnquiryAsDeleted(id);
                       await _markEnquiryAsDeleted(id);
+                      await Future.delayed(const Duration(milliseconds: 300));
+                      await _loadPage(widget.currentPage);
                     },
                   ),
                 ),
@@ -624,13 +754,15 @@ class _EnquiryTabState extends State<EnquiryTab> {
       }
 
       final url = Uri.parse("http://13.233.209.211:8080/api/enquiry/download");
-      final filename = "enquiry_list_${DateTime.now().millisecondsSinceEpoch}.xlsx";
+      final filename =
+          "enquiry_list_${DateTime.now().millisecondsSinceEpoch}.xlsx";
       final downloadPath = "${directory.path}/$filename";
 
       final response = await http.get(url).timeout(
-        const Duration(seconds: 30),
-        onTimeout: () => throw TimeoutException("The connection timed out."),
-      );
+            const Duration(seconds: 30),
+            onTimeout: () =>
+                throw TimeoutException("The connection timed out."),
+          );
 
       if (response.statusCode == 200) {
         final file = File(downloadPath);
@@ -690,7 +822,8 @@ class _EnquiryTabState extends State<EnquiryTab> {
     bool isInteractive = true,
     VoidCallback? onTap,
   }) {
-    final displayValue = (value == null || value.trim().isEmpty || value == "-") ? "N/A" : value;
+    final displayValue =
+        (value == null || value.trim().isEmpty || value == "-") ? "N/A" : value;
 
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 6),
@@ -736,7 +869,7 @@ class _EnquiryTabState extends State<EnquiryTab> {
       ),
     );
   }
-  // Styled viewEnquiry function based on logout dialog styling
+
   Future<void> _viewEnquiry(int id, String userName, String productName) async {
     showDialog(
       context: context,
@@ -745,94 +878,40 @@ class _EnquiryTabState extends State<EnquiryTab> {
         child: CircularProgressIndicator(color: Color(0xff185794)),
       ),
     );
-
     try {
-      final d = await ApiService().fetchEnquiryById(id); // returns EnquiryItem?
+      // 1️⃣ Fetch enquiry details
+      final d = await ApiService().fetchEnquiryById(id);
       Navigator.pop(context); // remove loader
-
       if (d == null) throw Exception("No enquiry found");
-
+      print('After fetchEnquiryById - ID: $id, read: ${d.read}');
+      // 2️⃣ Call backend to mark as read
+      await _markEnquiryAsRead(id);
+      // 3️⃣ Update local UI immediately
+      final index = _items.indexWhere((e) => e.id == id);
+      if (index != -1) {
+        setState(() {
+          _items[index] = EnquiryItem(
+            id: _items[index].id,
+            productName: _items[index].productName,
+            userName: _items[index].userName,
+            readValue: d.read == true ? 1 : 0,
+          );
+        });
+      }
+      // 4️⃣ Show the dialog
       await showDialog(
         context: context,
         builder: (_) => Dialog(
-          insetPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 60),
+          insetPadding:
+              const EdgeInsets.symmetric(horizontal: 20, vertical: 60),
           backgroundColor: Colors.transparent,
-          child: Stack(
-            clipBehavior: Clip.none,
-            children: [
-              Container(
-                constraints: const BoxConstraints(maxWidth: 400),
-                padding: const EdgeInsets.fromLTRB(20, 52, 20, 20),
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(16),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black.withOpacity(0.12),
-                      blurRadius: 18,
-                      offset: const Offset(0, 8),
-                    ),
-                  ],
-                ),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    const Text(
-                      "Enquiry Details",
-                      style: TextStyle(
-                        fontSize: 18,
-                        fontWeight: FontWeight.w700,
-                        color: Color(0xff185794),
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    Container(
-                      height: 2,
-                      width: 40,
-                      color: const Color(0xff185794).withOpacity(0.5),
-                    ),
-                    const SizedBox(height: 24),
-
-                    _buildInteractiveItem(label: "Medicine Name", value: productName, icon: Icons.medication, isInteractive: false),
-                    _buildInteractiveItem(label: "User Name", value: userName, icon: Icons.person, isInteractive: false),
-                    _buildInteractiveItem(label: "Generic Name", value: d.genericName, icon: Icons.medication_outlined, isInteractive: false),
-                    _buildInteractiveItem(label: "Mobile", value: d.mobileNumber, icon: Icons.phone, onTap: () => _handlePhoneNumberTap(d.mobileNumber)),
-                    _buildInteractiveItem(label: "Email", value: d.email, icon: Icons.email, onTap: () => _handleEmailTap(d.email)),
-                    _buildInteractiveItem(label: "Organisation", value: d.organisationName, icon: Icons.business, isInteractive: false),
-                    _buildInteractiveItem(label: "Enquired", value: formatDateTime(d.createdDatetime), icon: Icons.calendar_today, isInteractive: false),
-
-                    const SizedBox(height: 20),
-                    ElevatedButton.icon(
-                      onPressed: () {
-                        Navigator.pop(context); // close dialog
-                      },
-                      icon: const Icon(Icons.close, size: 18, color: Colors.white),
-                      label: const Text("Close", style: TextStyle(color: Colors.white)),
-                      style: ElevatedButton.styleFrom(
-                        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
-                        backgroundColor: const Color(0xff185794),
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(30)),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              Positioned(
-                top: -28,
-                left: 0,
-                right: 0,
-                child: CircleAvatar(
-                  radius: 28,
-                  backgroundColor: Colors.white,
-                  child: Icon(Icons.info_outline, size: 30, color: Color(0xff185794)),
-                ),
-              ),
-            ],
-          ),
+          child: _buildEnquiryDetailsDialog(d, userName, productName),
         ),
       );
-
-      await _markEnquiryAsRead(id); // after dialog close
+      // 5️⃣ Refresh the page to ensure data reflects server-side status
+      print('Dialog closed, refreshing page...');
+      await Future.delayed(const Duration(milliseconds: 300));
+      await _loadPage(widget.currentPage);
     } catch (e) {
       Navigator.pop(context);
       showDialog(
@@ -841,7 +920,9 @@ class _EnquiryTabState extends State<EnquiryTab> {
           title: const Text("Error"),
           content: Text("Unable to load enquiry details: $e"),
           actions: [
-            TextButton(onPressed: () => Navigator.pop(context), child: const Text("OK")),
+            TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text("OK")),
           ],
         ),
       );
@@ -857,7 +938,10 @@ class _EnquiryTabState extends State<EnquiryTab> {
     final double buttonSize = 30;
     final double fontSize = 14;
 
-    int startPage = max(0, min(widget.currentPage - (maxPagesToShow ~/ 2), _totalPages - maxPagesToShow));
+    int startPage = max(
+        0,
+        min(widget.currentPage - (maxPagesToShow ~/ 2),
+            _totalPages - maxPagesToShow));
     int endPage = min(startPage + maxPagesToShow - 1, _totalPages - 1);
 
     return Padding(
@@ -867,7 +951,11 @@ class _EnquiryTabState extends State<EnquiryTab> {
         children: [
           // ← Previous
           if (widget.currentPage > 0)
-            _buildArrowButton(false, () => widget.onPageChange(widget.currentPage - 1), buttonSize, fontSize),
+            _buildArrowButton(
+                false,
+                () => widget.onPageChange(widget.currentPage - 1),
+                buttonSize,
+                fontSize),
 
           // Page buttons
           ...List.generate(endPage - startPage + 1, (index) {
@@ -882,15 +970,16 @@ class _EnquiryTabState extends State<EnquiryTab> {
                 margin: const EdgeInsets.symmetric(horizontal: 4),
                 decoration: isSelected
                     ? BoxDecoration(
-                  color: const Color(0xff185794).withOpacity(0.1),
-                  borderRadius: BorderRadius.circular(6),
-                )
+                        color: const Color(0xff185794).withOpacity(0.1),
+                        borderRadius: BorderRadius.circular(6),
+                      )
                     : null,
                 child: Text(
                   '${pageNumber + 1}',
                   style: TextStyle(
                     fontSize: fontSize,
-                    fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+                    fontWeight:
+                        isSelected ? FontWeight.bold : FontWeight.normal,
                     color: const Color(0xff185794),
                   ),
                 ),
@@ -900,13 +989,18 @@ class _EnquiryTabState extends State<EnquiryTab> {
 
           // → Next
           if (widget.currentPage < _totalPages - 1)
-            _buildArrowButton(true, () => widget.onPageChange(widget.currentPage + 1), buttonSize, fontSize),
+            _buildArrowButton(
+                true,
+                () => widget.onPageChange(widget.currentPage + 1),
+                buttonSize,
+                fontSize),
         ],
       ),
     );
   }
 
-  Widget _buildArrowButton(bool isNext, VoidCallback onTap, double size, double fontSize) {
+  Widget _buildArrowButton(
+      bool isNext, VoidCallback onTap, double size, double fontSize) {
     return InkWell(
       onTap: onTap,
       borderRadius: BorderRadius.circular(6),
@@ -963,8 +1057,7 @@ class _EnquiryTabState extends State<EnquiryTab> {
                       alignment: Alignment.centerRight,
                       child: Padding(
                         padding: const EdgeInsets.only(right: 20),
-                        child:
-                        IconButton(
+                        child: IconButton(
                           icon: Image.asset(
                             'assets/images/excel_icon.png',
                             height: 24,
@@ -1013,28 +1106,29 @@ class _EnquiryTabState extends State<EnquiryTab> {
                             : RefreshIndicator(
                                 onRefresh: _refresh,
                                 color: const Color(0xff185794),
-                      child: _items.isEmpty
-                          ? Center(
-                        child: Column(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Lottie.asset(
-                              "assets/animations/no_data_found.json",
-                              width: 180,
-                              height: 180,
-                              fit: BoxFit.contain,
-                            ),
-                            const SizedBox(height: 12),
-                            const Text(
-                              "No enquiries found.",
-                              style: TextStyle(
-                                color: Colors.grey,
-                              ),
-                            ),
-                          ],
-                        ),
-                      )
-                          : ListView.builder(
+                                child: _items.isEmpty
+                                    ? Center(
+                                        child: Column(
+                                          mainAxisAlignment:
+                                              MainAxisAlignment.center,
+                                          children: [
+                                            Lottie.asset(
+                                              "assets/animations/no_data_found.json",
+                                              width: 180,
+                                              height: 180,
+                                              fit: BoxFit.contain,
+                                            ),
+                                            const SizedBox(height: 12),
+                                            const Text(
+                                              "No enquiries found.",
+                                              style: TextStyle(
+                                                color: Colors.grey,
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                      )
+                                    : ListView.builder(
                                         itemCount: _items.length,
                                         itemBuilder: (context, index) =>
                                             _buildEnquiryCard(
@@ -1057,118 +1151,95 @@ class _EnquiryTabState extends State<EnquiryTab> {
   }
 
   Widget _buildEnquiryCard(EnquiryItem item, int index) {
-    final isNew = item.status == EnquiryStatus.newEnquiry;
-    final sideColor = isNew ? const Color(0xff185794) : Colors.grey;
-    final bgColor = isNew ? Color(0xffeff4f8) : Colors.white;
+    final isUnread = item.readValue == 0;
+    final sideColor = isUnread ? Colors.grey : const Color(0xff185794);
+    final bgColor = isUnread ? Colors.white : const Color(0xffeff4f8);
 
     return Padding(
       padding: const EdgeInsets.only(left: 20, right: 20),
-      child: Container(
-        margin: EdgeInsets.symmetric(vertical: 4.0),
-        // Increased vertical margin for better separation
-        padding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-        // Increased vertical padding for better touch target
-        decoration: BoxDecoration(
-          color: bgColor,
-          borderRadius: BorderRadius.circular(8),
-          border: isNew
-              ? Border(
-                  left: BorderSide(color: sideColor, width: 4),
-                  top: BorderSide(color: sideColor, width: 1),
-                  right: BorderSide(color: sideColor, width: 1),
-                  bottom: BorderSide(color: sideColor, width: 1),
-                )
-              : Border(
-                  left: BorderSide(color: sideColor, width: 4),
-                ),
-          boxShadow: const [
-            BoxShadow(
-              color: Colors.black12,
-              blurRadius: 3,
-              offset: Offset(0, 1.5),
+      child: InkWell(
+        onTap: () async {
+          await _viewEnquiry(item.id, item.userName, item.productName);
+        },
+        child: Container(
+          margin: const EdgeInsets.symmetric(vertical: 4.0),
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+          decoration: BoxDecoration(
+            color: bgColor,
+            borderRadius: BorderRadius.circular(8),
+            border: isUnread
+                ? Border(left: BorderSide(color: sideColor, width: 4))
+                : Border(
+              left: BorderSide(color: sideColor, width: 4),
+              top: BorderSide(color: sideColor, width: 1),
+              right: BorderSide(color: sideColor, width: 1),
+              bottom: BorderSide(color: sideColor, width: 1),
             ),
-          ],
-        ),
-        child: Row(
-          children: [
-            Expanded(
-              flex: 1,
-              child: Center(child: Text('${index + 1}')),
-            ),
-            Expanded(
-              flex: 4,
-              child: isNew
-                  ? Padding(
-                    padding: const EdgeInsets.only(left: 20.0),
-                    child: Text(
-                        item.productName,
-                        style: TextStyle(
-                            fontWeight:
-                                isNew ? FontWeight.bold : FontWeight.normal,
-                            fontSize: 16,
-                            color: Color(0xff185794)),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                  )
-                  : Padding(
-                    padding: const EdgeInsets.only(left: 20.0),
-                    child: Text(
-                        item.productName,
-                        style: TextStyle(
-                          fontWeight: isNew ? FontWeight.bold : FontWeight.normal,
-                          fontSize: 14,
-                        ),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                  ),
-            ),
-            isNew
-                ? Expanded(
-                    flex: 3,
-                    child: Padding(
-                      padding: const EdgeInsets.only(left: 8.0),
-                      child: Text(
-                        item.userName,
-                        style: const TextStyle(
-                            fontSize: 15, color: Color(0xff185794)),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ),
-                  )
-                : Expanded(
-                    flex: 3,
-                    child: Padding(
-                      padding: const EdgeInsets.only(left: 8.0),
-                      child: Text(
-                        item.userName,
-                        style: const TextStyle(fontSize: 13),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ),
-                  ),
-            Expanded(
-              flex: 2,
-              child: IconButton(
-                icon: Icon(
-                  isNew ? Icons.visibility_off : Icons.delete_outline,
-                  color: isNew ? const Color(0xff185794) : Colors.red.shade400,
-                  size: 24,
-                ),
-                padding: const EdgeInsets.all(8.0),
-                onPressed: () async {
-                  if (isNew) {
-                    await _viewEnquiry(item.id, item.userName, item.productName);
-                  } else {
-                    _confirmDeleteEnquiry(item.id);
-                  }
-                },
+            boxShadow: const [
+              BoxShadow(
+                color: Colors.black12,
+                blurRadius: 3,
+                offset: Offset(0, 1.5),
               ),
-            ),
-          ],
+            ],
+          ),
+          child: Row(
+            children: [
+              Expanded(
+                flex: 1,
+                child: Center(child: Text('${index + 1}')),
+              ),
+              Expanded(
+                flex: 4,
+                child: Padding(
+                  padding: const EdgeInsets.only(left: 20.0),
+                  child: Text(
+                    item.productName,
+                    style: TextStyle(
+                      fontWeight: isUnread ? FontWeight.normal : FontWeight.bold,
+                      fontSize: isUnread ? 14 : 16,
+                      color: isUnread ? Colors.black : const Color(0xff185794),
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+              ),
+              Expanded(
+                flex: 3,
+                child: Padding(
+                  padding: const EdgeInsets.only(left: 8.0),
+                  child: Text(
+                    item.userName,
+                    style: TextStyle(
+                      fontSize: isUnread ? 13 : 15,
+                      color: isUnread ? Colors.black : const Color(0xff185794),
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+              ),
+              Expanded(
+                flex: 2,
+                child: IconButton(
+                  icon: Icon(
+                    isUnread ? Icons.delete_outline : Icons.visibility_off,
+                    color: isUnread
+                        ? Colors.red.shade400
+                        : const Color(0xff185794),
+                  ),
+                  onPressed: () async {
+                    if (isUnread) {
+                      _confirmDeleteEnquiry(item.id);
+                    } else {
+                      await _viewEnquiry(item.id, item.userName, item.productName);
+                    }
+                  },
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );

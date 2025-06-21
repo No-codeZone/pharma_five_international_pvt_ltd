@@ -903,11 +903,13 @@ class _ProductListTabState extends State<ProductListTab> {
 
         Navigator.of(context, rootNavigator: true).pop(); // Close loader
 
-        if (response != null && response.toLowerCase().contains("uploaded")) {
-          _showToast(response);
+        if (response != null && response.responseCode==200) {
+          print("Bulk upload response\t${response}");
+          print("Bulk upload result\t${result}");
+          _showToast(response.responseMessage.toString());
           await loadProducts(page: _currentProductPage);
         } else {
-          _showToast(response ?? "Upload failed", isError: true);
+          _showToast(response?.responseMessage.toString() ?? "Upload failed", isError: true);
         }
       } catch (e) {
         if (timer.isActive) timer.cancel();

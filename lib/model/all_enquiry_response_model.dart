@@ -1,5 +1,5 @@
 class AllEnquiryResponseModel {
-  List<Data>? data;
+  List<AllEnquiry>? data;
   String? responseMessage;
   int? totalCount;
   int? responseCode;
@@ -9,9 +9,9 @@ class AllEnquiryResponseModel {
 
   AllEnquiryResponseModel.fromJson(Map<String, dynamic> json) {
     if (json['data'] != null) {
-      data = <Data>[];
+      data = <AllEnquiry>[];
       json['data'].forEach((v) {
-        data!.add(new Data.fromJson(v));
+        data!.add(new AllEnquiry.fromJson(v));
       });
     }
     responseMessage = json['responseMessage'];
@@ -31,21 +31,29 @@ class AllEnquiryResponseModel {
   }
 }
 
-class Data {
+class AllEnquiry {
   int? id;
   int? empId;
   String? empName;
   String? medicineName;
   int? status;
+  int? read;
 
-  Data({this.id, this.empId, this.empName, this.medicineName, this.status});
+  AllEnquiry(
+      {this.id,
+        this.empId,
+        this.empName,
+        this.medicineName,
+        this.status,
+        this.read});
 
-  Data.fromJson(Map<String, dynamic> json) {
+  AllEnquiry.fromJson(Map<String, dynamic> json) {
     id = json['id'];
     empId = json['empId'];
     empName = json['empName'];
     medicineName = json['medicineName'];
     status = json['status'];
+    read = json['read'];
   }
 
   Map<String, dynamic> toJson() {
@@ -55,6 +63,7 @@ class Data {
     data['empName'] = this.empName;
     data['medicineName'] = this.medicineName;
     data['status'] = this.status;
+    data['read'] = this.read;
     return data;
   }
 }

@@ -6,6 +6,7 @@ import 'package:http/http.dart' as http;
 import '../helper/shared_preferences.dart';
 import '../model/add_product_request_model.dart';
 import '../model/all_enquiry_response_model.dart';
+import '../model/bulk_upload_response_model.dart';
 import '../model/delete_enquiry_request_model.dart';
 import '../model/delete_enquiry_response_model.dart';
 import '../model/get_field_product_listing_model.dart';
@@ -503,16 +504,15 @@ class ApiService {
   }
 
   ///Bulk product upload
-  Future<String?> uploadBulkProductList(File excelFile) async {
+  Future<BulkUploadResponseModel?> uploadBulkProductList(File excelFile) async {
     final url = Uri.parse('$baseUrlProduct$bulkProductAPI');
 
     try {
       final request = http.MultipartRequest('POST', url);
 
-      // Add the Excel file (adjust 'file' if backend uses another field name)
+      // Add the Excel file
       request.files.add(await http.MultipartFile.fromPath('file', excelFile.path));
 
-      // Optional headers (don't manually set Content-Type)
       request.headers.addAll({
         "Accept": "application/json",
       });
@@ -523,13 +523,16 @@ class ApiService {
       print('Upload response: ${response.statusCode} - ${response.body}');
 
       if (response.statusCode == 200) {
-        final data = response.body;
-        return data;
+        final json = jsonDecode(response.body);
+        return BulkUploadResponseModel.fromJson(json);
       } else {
-        return "Failed to upload products: ${response.body}";
+        // Return null or throw an error based on how you want to handle it
+        print("Failed to upload products: ${response.body}");
+        return null;
       }
     } catch (e) {
-      return "Error uploading products: $e";
+      print("Error uploading products: $e");
+      return null;
     }
   }
 
@@ -811,6 +814,7 @@ class ApiService {
 
       if (response.statusCode == 200) {
         final decoded = utf8.decode(response.bodyBytes);
+        print("Product fetch by ID*************");
         return GetProductMoreResponseModel.fromJson(json.decode(decoded));
       } else {
         print('Failed to fetch product details. Status: ${response.statusCode}');
@@ -842,7 +846,6 @@ class ApiService {
       return null;
     }
   }
-
 
   ///Enquiry product API
   Future<ResponseEnquiryModel?> submitEnquiry(RequestEnquiryModel model) async {
@@ -901,9 +904,7 @@ class ApiService {
     final uri = Uri.parse(
       "$baseUrlProduct$enquiryAllProductAPI?index=$index&limit=$limit",
     );
-
     final response = await http.get(uri);
-
     if (response.statusCode == 200) {
       debugPrint("Response for all fetched enquires\t${response.body}");
       final Map<String, dynamic> jsonBody = json.decode(response.body);
@@ -920,18 +921,25 @@ class ApiService {
   ///View enquiry details API
   Future<ViewEnquiryData?> fetchEnquiryById(int id) async {
     final uri = Uri.parse("$baseUrlProduct/enquiry/$id/update-status");
-    final requestModel = ViewEnquiryRequestModel(read: 1); // or 0 if unread
+    final requestModel = ViewEnquiryRequestModel(read: true, status: false); // Ensure both fields are set
     final res = await http.put(
       uri,
       headers: {"Content-Type": "application/json"},
       body: jsonEncode(requestModel.toJson()),
     );
+
     print("Request URL: $uri");
+    print("Request Body: ${jsonEncode(requestModel.toJson())}");
     print("Status Code: ${res.statusCode}");
     print("Response Body: ${res.body}");
+
     if (res.statusCode == 200) {
       final decoded = json.decode(res.body);
       final model = ViewEnquiryResponseModel.fromJson(decoded);
+
+      // Verify the returned data
+      print("Returned data - read: ${model.data?.read}, status: ${model.data?.status}");
+
       return model.data;
     } else {
       throw Exception("Failed to fetch enquiry with id $id (${res.statusCode})");
@@ -1048,7 +1056,6 @@ class ApiService {
       throw Exception('Network error: $e');
     }
   }
-
 
   // Helper method to map backend status to frontend display status
   String _mapStatusToFrontend(String backendStatus) {

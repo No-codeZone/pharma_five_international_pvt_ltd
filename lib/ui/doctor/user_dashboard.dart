@@ -805,7 +805,7 @@ class _UserDashboardScreenState extends State<UserDashboardScreen>
     final double fontSize = 14;
 
     return Align(
-      alignment: Alignment.bottomLeft,
+      alignment: Alignment.center,
       child: Container(
         padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 20),
         child: Row(
