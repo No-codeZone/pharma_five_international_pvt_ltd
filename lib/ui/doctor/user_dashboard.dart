@@ -5,7 +5,9 @@ import 'dart:math';
 
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:device_info_plus/device_info_plus.dart';
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:fluttertoast/fluttertoast.dart';
 import 'package:http/http.dart' as http;
 import 'package:lottie/lottie.dart';
@@ -19,6 +21,7 @@ import '../../helper/shared_preferences.dart';
 import '../../model/product_search_listing_response_model.dart';
 import '../../service/api_service.dart';
 import '../admin/product_details_screen.dart';
+import 'package:share_plus/share_plus.dart';
 
 class UserDashboardScreen extends StatefulWidget {
   const UserDashboardScreen({Key? key}) : super(key: key);
@@ -51,6 +54,7 @@ class _UserDashboardScreenState extends State<UserDashboardScreen>
   late StreamSubscription<List<ConnectivityResult>> _connectivitySubscription;
   ApiService apiService = ApiService();
   bool _lastConnectionStatus = true;
+  final FlutterLocalNotificationsPlugin flutterLocalNotificationsPlugin = FlutterLocalNotificationsPlugin();
 
   // Key for product list refresh
   final GlobalKey<RefreshIndicatorState> _refreshIndicatorKey =
@@ -619,24 +623,31 @@ class _UserDashboardScreenState extends State<UserDashboardScreen>
 
       _showToast("Downloading Excel file...");
 
-      final directory = await _getAppropriateDirectory();
-      if (directory == null) {
-        _showToast("Failed to access storage directory", isError: true);
-        setState(() => _isLoading = false);
-        return;
+      String? downloadPath;
+      final filename = "product_list_${DateTime.now().millisecondsSinceEpoch}.xlsx";
+
+      if (Platform.isAndroid) {
+        String? selectedDir = await FilePicker.platform.getDirectoryPath();
+        if (selectedDir == null) {
+          _showToast("Download cancelled by user.");
+          setState(() => _isLoading = false);
+          return;
+        }
+        downloadPath = "$selectedDir/$filename";
+      } else if (Platform.isIOS) {
+        final directory = await getApplicationDocumentsDirectory();
+        downloadPath = "${directory.path}/$filename";
+      } else {
+        final directory = await getApplicationDocumentsDirectory();
+        downloadPath = "${directory.path}/$filename";
       }
 
-      //3.108.165.154
       final url = Uri.parse("http://13.233.209.211:8080/api/product/download");
-      final filename =
-          "product_list_${DateTime.now().millisecondsSinceEpoch}.xlsx";
-      final downloadPath = "${directory.path}/$filename";
 
       final response = await http.get(url).timeout(
-            const Duration(seconds: 30),
-            onTimeout: () =>
-                throw TimeoutException("The connection timed out."),
-          );
+        const Duration(seconds: 30),
+        onTimeout: () => throw TimeoutException("The connection timed out."),
+      );
 
       if (response.statusCode == 200) {
         final file = File(downloadPath);
@@ -648,28 +659,17 @@ class _UserDashboardScreenState extends State<UserDashboardScreen>
           } catch (e) {
             debugPrint("iOS file tag error: $e");
           }
+
+          await Share.shareXFiles(
+            [XFile(downloadPath)],
+            text: 'Excel file downloaded. Choose where to save or share.',
+          );
+
+        } else if (Platform.isAndroid) {
+          _showToast("Excel downloaded to: $downloadPath");
+          await _showAndroidDownloadNotification(downloadPath);
         }
 
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text("Excel downloaded to: $downloadPath"),
-              backgroundColor: Color(0xff185794),
-              duration: const Duration(seconds: 4),
-              action: SnackBarAction(
-                label: "Open",
-                textColor: Colors.white,
-                onPressed: () async {
-                  try {
-                    await OpenFile.open(downloadPath);
-                  } catch (e) {
-                    _showToast("Unable to open file: $e", isError: true);
-                  }
-                },
-              ),
-            ),
-          );
-        }
       } else if (response.statusCode == 401 || response.statusCode == 403) {
         _showToast("Authorization error. Please log in again.", isError: true);
       } else if (response.statusCode >= 500) {
@@ -687,6 +687,27 @@ class _UserDashboardScreenState extends State<UserDashboardScreen>
     } finally {
       setState(() => _isLoading = false);
     }
+  }
+
+  Future<void> _showAndroidDownloadNotification(String filePath) async {
+    const AndroidNotificationDetails androidDetails = AndroidNotificationDetails(
+      'download_channel',
+      'Downloads',
+      channelDescription: 'Notifications for file downloads',
+      importance: Importance.high,
+      priority: Priority.high,
+      icon: '@mipmap/ic_launcher',
+    );
+
+    const NotificationDetails notifDetails = NotificationDetails(android: androidDetails);
+
+    await flutterLocalNotificationsPlugin.show(
+      0,
+      'Download Complete',
+      'Excel downloaded to: $filePath',
+      notifDetails,
+      payload: filePath,
+    );
   }
 
   String _getCurrentTimeFormatted() {
@@ -801,7 +822,7 @@ class _UserDashboardScreenState extends State<UserDashboardScreen>
     int endPage = min(startPage + maxPagesToShow - 1, totalPages - 1);
 
     // ✅ Slightly smaller, fixed-size buttons and font
-    final double buttonSize = 30;
+    final double buttonSize = 25;
     final double fontSize = 14;
 
     return Align(

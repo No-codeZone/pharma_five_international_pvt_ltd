@@ -1,10 +1,25 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart'; // ✅ For orientation lock
+import 'package:flutter_local_notifications/flutter_local_notifications.dart';
+import 'package:open_file/open_file.dart';
 import 'package:pharma_five/ui/splash_screen.dart';
 import 'helper/shared_preferences.dart';
 
+final FlutterLocalNotificationsPlugin flutterLocalNotificationsPlugin = FlutterLocalNotificationsPlugin();
+
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+
+  const AndroidInitializationSettings androidInit = AndroidInitializationSettings('@mipmap/ic_launcher');
+  const InitializationSettings initSettings = InitializationSettings(android: androidInit);
+
+  await flutterLocalNotificationsPlugin.initialize(initSettings,
+      onDidReceiveNotificationResponse: (response) {
+        if (response.payload != null) {
+          OpenFile.open(response.payload);
+        }
+      }
+  );
 
   // ✅ Lock the app orientation to portrait only
   await SystemChrome.setPreferredOrientations([

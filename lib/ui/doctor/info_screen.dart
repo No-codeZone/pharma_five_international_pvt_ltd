@@ -498,19 +498,27 @@ class _InfoScreenState extends State<InfoScreen>
                 "Information about new cancer treatments that are not available in India is often scattered and difficult to find.\n\n"
                     "Our goal with this app is to centralize that information — all in one place — and make it easily accessible to oncologists with just one press, simplifying medical decision-making.\n\n"
                     "The Can-Search app acts as a ready reckoner for oncologists, providing quick access to new cancer medications, available strengths, and prescribing information.\n\n"
-                    "Once a treatment is selected, Pharma Five International Pv. Ltd., through its global network and expertise, ensures the medicine reaches the patient's doorstep.\n\n"
+                    "Once a treatment is selected, Pharma Five International Pvt. Ltd., through its global network and expertise, ensures the medicine reaches the patient's doorstep.\n\n"
                     "This app is dedicated to all the committed oncologists across the country.",
                 style: TextStyle(fontSize: 15, height: 1.6, color: Colors.black87),
               ),
             ),
-
+            const SizedBox(height: 24),
+            _buildSectionTitle("PROCESS NOTE ON NAMED PATIENT BASIS IMPORTS"),
+            const SizedBox(height: 10),
+            Draft1InformationCard(),
+            const SizedBox(height: 24),
+            _buildSectionTitle("Bringing Essential Medicines to You—Seamlessly and Legally"),
+            const SizedBox(height: 10),
+            Draft2InformationCard(),
             const SizedBox(height: 24),
             _buildSectionTitle("Contact Us"),
-            const SizedBox(height: 12),
-            _buildContactRow("V. Venkataraman", "+919500069255"),
-            _buildContactRow("C. Sreekanth", "+919176655641"),
-            _buildContactRow("S. Dilli Babu", "+919841829603"),
-
+            const SizedBox(height: 10),
+            VenkataramanInformationCard(),
+            const SizedBox(height: 24),
+            DilliBabuInformationCard(),
+            const SizedBox(height: 24),
+            SreekanthInformationCard(),
             const SizedBox(height: 30),
             Center(
               child: ElevatedButton.icon(
@@ -774,6 +782,470 @@ class _InfoScreenState extends State<InfoScreen>
           },
         );
       },
+    );
+  }
+}
+class Draft1InformationCard extends StatefulWidget {
+  const Draft1InformationCard({super.key});
+
+  @override
+  State<Draft1InformationCard> createState() => _Draft1InformationCardState();
+}
+
+class _Draft1InformationCardState extends State<Draft1InformationCard> {
+  bool _expanded = false;
+
+  static const String _fullText =
+      // "PROCESS NOTE ON NAMED PATIENT BASIS IMPORTS\n\n"
+      "We provide medicines that are not available in India to patients in India on a Named Patient Basis Imports. "
+      "This includes sourcing the medicine from the supplier to safely delivering the medicine to the patient’s doorstep. "
+      "This process is 100% legal and through original and verified sources. "
+      "We source the medicine directly from the supplier outside India and do not charge anything from the patient for this facilitation service.\n\n"
+      "It is to be noted that the lead time provided below is very stringent and cannot be expedited as it involves many participants like the Government offices that provide the license, "
+      "the customs office that clears the import, and the shipping process through air cargo. "
+      "Also, the suppliers abroad have a standard process which they follow and are bound by the local laws. "
+      "We want the patients to understand that the shipment will take at least 14 to 16 Working days (excluding Saturdays and Sundays) from the date of payment to the supplier outside India. "
+      "We assure that every effort will be taken at our end to supply the medicine within the stipulated timeline, subject to any extreme situations which may lead to certain delays. "
+      "We do want to convey that such occurrences are very rare and most of the shipments we deliver are generally on time. "
+      "The detailed process is explained below.\n\n"
+      "The following documents are expected to be provided by the patient:\n"
+      "• Prescription mentioning medicine name with strength and dosage with treating Doctor’s stamp & registration number of the Doctor in the doctor’s letterhead.\n"
+      "• Patient’s Aadhar ID.\n"
+      "• Attender’s Aadhar ID (can be anyone like relatives, caretakers etc.).\n"
+      "• One Email ID and Mobile Number accessible by the patient or their attender for OTP. (used for filing application for import license).\n"
+      "• CDEC certificate signed by a government doctor (can be arranged by us for a fee)\n\n"
+      "Once the above documents are received, we will apply for import license from government portal. This process takes 2 to 3 working days.\n"
+      "Once we receive approval, we will provide the license to the patient along with the proforma invoice along with bank account details received from the supplier.\n"
+      "The patient, along with the above documents mentioned and the documents provided by us, will have to wire transfer the sum mentioned in the proforma invoice and share us the acknowledgement with payment reference number. "
+      "Please note that the patient’s name is to be mentioned in the reference column while making the above payment.\n"
+      "Once we receive the acknowledgement, the process of import starts. It is from here that the shipment is accepted and the stipulated timeline of 14 – 16 working days starts.\n"
+      "The charges for shipment from the source country to the patient will be on actual basis and shall be paid by the patient to us in INR. "
+      "We will provide proper bills for the same and any money received in excess of the bills provided by us, will be refunded to the patient’s bank account.\n"
+      "We will provide a set of documents on which the patient is required to sign for the customs clearance process.\n"
+      "The actual invoice of the medicine along with the customs bill of entry will be provided within 10 days from the time of delivery of medicine to your doorstep.\n\n"
+      "We ensure a smooth process and timebound delivery with an unmatched track record for 8 years and counting.\n\n"
+      "We source Globally & Deliver Locally at your Doorstep.";
+
+  @override
+  Widget build(BuildContext context) {
+    return _buildCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            _fullText,
+            maxLines: _expanded ? null : 10,
+            overflow: _expanded ? TextOverflow.visible : TextOverflow.ellipsis,
+            style: const TextStyle(fontSize: 15, height: 1.6, color: Colors.black87),
+          ),
+          Align(
+            alignment: Alignment.centerRight,
+            child: TextButton(
+              onPressed: () => setState(() => _expanded = !_expanded),
+              child: Text(_expanded ? "Read less" : "Read more", style: TextStyle(color: Color(0xff185794)),),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+  Widget _buildCard({required Widget child}) {
+    return Card(
+      elevation: 2,
+      color: Colors.white,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      margin: EdgeInsets.zero,
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: child,
+      ),
+    );
+  }
+}
+class Draft2InformationCard extends StatefulWidget {
+  const Draft2InformationCard({super.key});
+
+  @override
+  State<Draft2InformationCard> createState() => _Draft2InformationCardState();
+}
+
+class _Draft2InformationCardState extends State<Draft2InformationCard> {
+  bool _expanded = false;
+
+  static const String _fullText =
+      // "Bringing Essential Medicines to You—Seamlessly and Legally\n\n"
+      "Looking for life-saving medicines that aren’t available in India? We’ve got you covered. "
+      "With 100% legal process and verified sources, we ensure a hassle-free import process to deliver your medicine straight to your doorstep.\n\n"
+      "Here’s how we make it simple for you:\n"
+      "✅ Global sourcing, local delivery: We find the medicine you need and deliver it safely.\n"
+      "✅ Fully compliant with regulations: We handle all licenses, paperwork, and logistics.\n"
+      "✅ Zero facilitation charges: You pay only for the medicine and shipment at actual costs.\n"
+      "✅ Transparent process: All payments and documents are accounted for.\n"
+      "✅ Timely delivery: Your medicine arrives within 14 to 16 working days (excluding Saturdays and Sundays) from the date of payment.\n"
+      "✅ Trusted expertise: 8 years of unmatched service in importing essential medicines and 35+ years of experience in the field of pharmaceuticals.\n\n"
+      "✅ Here’s what we want from you:\n"
+      "• Prescription mentioning patient’s name, medicine name with strength and dosage with treating Doctor’s stamp & registration number of the Doctor in the doctor’s letterhead.\n"
+      "• Patient’s Aadhar ID.\n"
+      "• Attender’s Aadhar ID (can be anyone like relatives, caretakers etc.).\n"
+      "• One Email ID and Mobile Number accessible by the patient or their attender for OTP. (used for filing application for import license).\n"
+      "• CDEC certificate signed by a government doctor (can be arranged by us for a fee)\n\n"
+      "✅ Timelines:\n"
+      "License Application Process – 2 to 3 working days\n"
+      "Shipment process – 14 to 16 working days from the date of wire transfer to the supplier outside India & providing us the acknowledgement of the transfer.\n\n"
+      "✅ Points to note:\n"
+      "The lead time provided is very stringent and cannot be expedited as it involves many participants like the Government offices that approve the license, the customs offices that clears the import, and the shipping process through air cargo. "
+      "Also, the suppliers abroad have a standard process which they follow and are bound by the local laws.\n"
+      "We assure that every effort will be taken at our end to supply the medicine within the stipulated timeline, subject to any extreme situations which may lead to certain delays. "
+      "We do want to convey that such occurrences are very rare and most of the shipments we deliver are generally on time.\n"
+      "The actual invoice of the medicine along with the customs bill of entry will be provided within 10 days from the time of delivery of medicine.\n\n"
+      "Navigating legal approvals, customs, and air cargo can be complex, but our proven track record ensures that your health is our priority. "
+      "We have a streamlined process handled by experts, so you get the treatment you need, stress-free & on time.\n\n"
+      "“We source Globally - deliver locally”\n"
+      "“Right Thing the Right Way”";
+
+  @override
+  Widget build(BuildContext context) {
+    return _buildCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            _fullText,
+            maxLines: _expanded ? null : 10,
+            overflow: _expanded ? TextOverflow.visible : TextOverflow.ellipsis,
+            style: const TextStyle(fontSize: 15, height: 1.6, color: Colors.black87),
+          ),
+          Align(
+            alignment: Alignment.centerRight,
+            child: TextButton(
+              onPressed: () => setState(() => _expanded = !_expanded),
+              child: Text(_expanded ? "Read less" : "Read more",style: TextStyle(color: Color(0xff185794)),),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+  Widget _buildCard({required Widget child}) {
+    return Card(
+      elevation: 2,
+      color: Colors.white,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      margin: EdgeInsets.zero,
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: child,
+      ),
+    );
+  }
+}
+class VenkataramanInformationCard extends StatefulWidget {
+  const VenkataramanInformationCard({super.key});
+
+  @override
+  State<VenkataramanInformationCard> createState() => _VenkataramanInformationCardState();
+}
+
+class _VenkataramanInformationCardState extends State<VenkataramanInformationCard> {
+  bool _expanded = false;
+
+  static const String _fullText =
+      "An Alumni of IIM Lucknow and a certified member of Independent Director's Databank IICA, under the Aegis of Ministry of Corporate Affairs, Government of India. "
+      "Over 35 years of experience in handling specialty range of products in pharmaceutical industry, he has worked in mid-level management in Pharmaceutical companies. "
+      "A dynamic professional, V. Venkataraman, has worked in Leather Industry – Coromendel Leathers, Shipping Industry – Greenways Shipping and Pharma Industry – Unichem Labs, Fulford, MSD. "
+      "With a track record for delivering exceptional customer service, he has significant experience in handling patients. "
+      "Ensuring ethics, moral values and business integrity at all levels, he is exceptionally well organized, self-motivated, creative and intuitive.";
+
+  static const String _phoneNumber = "+919500069255";
+
+  @override
+  Widget build(BuildContext context) {
+    return _buildCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Profile row
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Image.asset(
+                'assets/images/venkataraman_pharma_five.png',
+                width: 120,
+                height: 120,
+                fit: BoxFit.cover,
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      "V. Venkataraman",
+                      style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                    ),
+                    const Text(
+                      "Director",
+                      style: TextStyle(fontSize: 14, color: Colors.grey),
+                    ),
+                    GestureDetector(
+                      onTap: () async {
+                        final Uri phoneUri = Uri(scheme: 'tel', path: _phoneNumber);
+                        if (await canLaunchUrl(phoneUri)) {
+                          await launchUrl(phoneUri);
+                        }
+                      },
+                      child: Text(
+                        _phoneNumber,
+                        style: const TextStyle(
+                          fontSize: 14,
+                          color: Colors.blue,
+                          decoration: TextDecoration.underline,
+                          fontWeight: FontWeight.bold
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          // Description
+          Text(
+            _fullText,
+            maxLines: _expanded ? null : 5,
+            overflow: _expanded ? TextOverflow.visible : TextOverflow.ellipsis,
+            style: const TextStyle(fontSize: 15, height: 1.6, color: Colors.black87),
+          ),
+          Align(
+            alignment: Alignment.centerRight,
+            child: TextButton(
+              onPressed: () => setState(() => _expanded = !_expanded),
+              child: Text(_expanded ? "Read less" : "Read more",style: TextStyle(color: Color(0xff185794))),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+  Widget _buildCard({required Widget child}) {
+    return Card(
+      elevation: 2,
+      color: Colors.white,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      margin: EdgeInsets.zero,
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: child,
+      ),
+    );
+  }
+}
+class DilliBabuInformationCard extends StatefulWidget {
+  const DilliBabuInformationCard({super.key});
+
+  @override
+  State<DilliBabuInformationCard> createState() => _DilliBabuInformationCardState();
+}
+
+class _DilliBabuInformationCardState extends State<DilliBabuInformationCard> {
+  bool _expanded = false;
+
+  static const String _fullText =
+      "A science graduate with a diploma in Pharmacy, with over 25 years of experience in Patient service. "
+      "A go-getter and committed professional, he has worked in leading pharmaceutical companies. "
+      "Macleods, Intas, Ranbaxy, Merck & Eisai. "
+      "He’s a dynamic professional with unmatched zeal and passion for patient care & customer service. "
+      "Exceptionally well organised and committed.";
+
+  static const String _phoneNumber = "+919841829603";
+
+  @override
+  Widget build(BuildContext context) {
+    return _buildCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Profile row
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Image.asset(
+                'assets/images/dilli_babu_pharma_five.png', // Update the path to your actual image asset
+                width: 120,
+                height: 120,
+                fit: BoxFit.cover,
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      "S. Dilli Babu",
+                      style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                    ),
+                    const Text(
+                      "Director", // Adjust title if necessary
+                      style: TextStyle(fontSize: 14, color: Colors.grey),
+                    ),
+                    GestureDetector(
+                      onTap: () async {
+                        final Uri phoneUri = Uri(scheme: 'tel', path: _phoneNumber);
+                        if (await canLaunchUrl(phoneUri)) {
+                          await launchUrl(phoneUri);
+                        }
+                      },
+                      child: Text(
+                        _phoneNumber,
+                        style: const TextStyle(
+                          fontSize: 14,
+                          color: Colors.blue,
+                          decoration: TextDecoration.underline,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          Text(
+            _fullText,
+            maxLines: _expanded ? null : 5,
+            overflow: _expanded ? TextOverflow.visible : TextOverflow.ellipsis,
+            style: const TextStyle(fontSize: 15, height: 1.6, color: Colors.black87),
+          ),
+          Align(
+            alignment: Alignment.centerRight,
+            child: TextButton(
+              onPressed: () => setState(() => _expanded = !_expanded),
+              child: Text(
+                _expanded ? "Read less" : "Read more",
+                style: const TextStyle(color: Color(0xff185794)),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildCard({required Widget child}) {
+    return Card(
+      elevation: 2,
+      color: Colors.white,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      margin: EdgeInsets.zero,
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: child,
+      ),
+    );
+  }
+}
+class SreekanthInformationCard extends StatefulWidget {
+  const SreekanthInformationCard({super.key});
+
+  @override
+  State<SreekanthInformationCard> createState() => _SreekanthInformationCardState();
+}
+
+class _SreekanthInformationCardState extends State<SreekanthInformationCard> {
+  bool _expanded = false;
+
+  static const String _fullText =
+      "A dynamic leader with more than 35 years of experience in pharmaceutical business, specializing exclusively in the Oncology segment in top management roles for more than two decades. "
+      "Been instrumental in launching many blockbuster molecules in the field of Oncology with reputed multinational companies, such as Merck, Roche, as a national head and spearheaded the launch of an Oncology company based out of Japan in India. "
+      "Passionate in providing an end-to-end solution to cancer patients and believes in quality healthcare for all.";
+
+  static const String _phoneNumber = "+919176655641";
+
+  @override
+  Widget build(BuildContext context) {
+    return _buildCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Profile row
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Image.asset(
+                'assets/images/sreekanth_pharma_five.png',
+                width: 100,
+                height: 120,
+                fit: BoxFit.cover,
+              ),
+              const SizedBox(width: 42),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      "C.Sreekanth",
+                      style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                    ),
+                    const Text(
+                      "Director", // Adjust title if necessary
+                      style: TextStyle(fontSize: 14, color: Colors.grey),
+                    ),
+                    GestureDetector(
+                      onTap: () async {
+                        final Uri phoneUri = Uri(scheme: 'tel', path: _phoneNumber);
+                        if (await canLaunchUrl(phoneUri)) {
+                          await launchUrl(phoneUri);
+                        }
+                      },
+                      child: Text(
+                        _phoneNumber,
+                        style: const TextStyle(
+                          fontSize: 14,
+                          color: Colors.blue,
+                          decoration: TextDecoration.underline,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          Text(
+            _fullText,
+            maxLines: _expanded ? null : 5,
+            overflow: _expanded ? TextOverflow.visible : TextOverflow.ellipsis,
+            style: const TextStyle(fontSize: 15, height: 1.6, color: Colors.black87),
+          ),
+          Align(
+            alignment: Alignment.centerRight,
+            child: TextButton(
+              onPressed: () => setState(() => _expanded = !_expanded),
+              child: Text(
+                _expanded ? "Read less" : "Read more",
+                style: const TextStyle(color: Color(0xff185794)),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildCard({required Widget child}) {
+    return Card(
+      elevation: 2,
+      color: Colors.white,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      margin: EdgeInsets.zero,
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: child,
+      ),
     );
   }
 }

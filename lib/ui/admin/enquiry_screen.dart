@@ -5,7 +5,9 @@ import 'dart:math';
 
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:device_info_plus/device_info_plus.dart';
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:fluttertoast/fluttertoast.dart';
 import 'package:http/http.dart' as http;
 import 'package:intl/intl.dart';
@@ -13,6 +15,7 @@ import 'package:lottie/lottie.dart';
 import 'package:open_file/open_file.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:permission_handler/permission_handler.dart';
+import 'package:share_plus/share_plus.dart';
 
 import '../../helper/communication_handler.dart';
 import '../../model/view_enquiry_response_model.dart';
@@ -68,6 +71,7 @@ class _EnquiryTabState extends State<EnquiryTab> {
   bool _isConnected = true;
   bool _isMarkingRead = false;
   bool _lastConnectionStatus = true;
+  final FlutterLocalNotificationsPlugin flutterLocalNotificationsPlugin = FlutterLocalNotificationsPlugin();
 
   @override
   void initState() {
@@ -734,7 +738,7 @@ class _EnquiryTabState extends State<EnquiryTab> {
     }
   }
 
-  Future<void> _downloadEnquiryExcelFile() async {
+  /*Future<void> _downloadEnquiryExcelFile() async {
     setState(() => _isLoading = true);
 
     try {
@@ -813,7 +817,107 @@ class _EnquiryTabState extends State<EnquiryTab> {
     } finally {
       setState(() => _isLoading = false);
     }
+  }*/
+
+  Future<void> _downloadEnquiryExcelFile() async {
+    setState(() => _isLoading = true);
+
+    try {
+      final hasPermission = await _requestFileOperationPermissions();
+      if (!hasPermission) {
+        setState(() => _isLoading = false);
+        return;
+      }
+
+      _showToast("Downloading Excel file...");
+
+      String? downloadPath;
+      final filename = "enquiry_list_${DateTime.now().millisecondsSinceEpoch}.xlsx";
+
+      if (Platform.isAndroid) {
+        String? selectedDir = await FilePicker.platform.getDirectoryPath();
+        if (selectedDir == null) {
+          _showToast("Download cancelled by user.");
+          setState(() => _isLoading = false);
+          return;
+        }
+        downloadPath = "$selectedDir/$filename";
+      } else if (Platform.isIOS) {
+        final directory = await getApplicationDocumentsDirectory();
+        downloadPath = "${directory.path}/$filename";
+      } else {
+        final directory = await getApplicationDocumentsDirectory();
+        downloadPath = "${directory.path}/$filename";
+      }
+
+      final url = Uri.parse("http://13.233.209.211:8080/api/enquiry/download");
+
+      final response = await http.get(url).timeout(
+        const Duration(seconds: 30),
+        onTimeout: () => throw TimeoutException("The connection timed out."),
+      );
+
+      if (response.statusCode == 200) {
+        final file = File(downloadPath);
+        await file.writeAsBytes(response.bodyBytes);
+
+        if (Platform.isIOS) {
+          try {
+            await file.setLastModified(DateTime.now());
+          } catch (e) {
+            debugPrint("iOS file tag error: $e");
+          }
+
+          await Share.shareXFiles(
+            [XFile(downloadPath)],
+            text: 'Enquiry Excel downloaded. Choose where to save or share.',
+          );
+
+        } else if (Platform.isAndroid) {
+          _showToast("Excel downloaded to: $downloadPath");
+          await _showAndroidDownloadNotification(downloadPath);
+        }
+
+      } else if (response.statusCode == 401 || response.statusCode == 403) {
+        _showToast("Authorization error. Please log in again.", isError: true);
+      } else if (response.statusCode >= 500) {
+        _showToast("Server error. Please try again later.", isError: true);
+      } else {
+        _showToast("Download failed: ${response.statusCode}", isError: true);
+      }
+    } on SocketException {
+      _showToast("Network error. Please check your internet.", isError: true);
+    } on TimeoutException {
+      _showToast("Download timed out. Please try again.", isError: true);
+    } catch (e) {
+      debugPrint("Download error: $e");
+      _showToast("Unexpected error: $e", isError: true);
+    } finally {
+      setState(() => _isLoading = false);
+    }
   }
+
+  Future<void> _showAndroidDownloadNotification(String filePath) async {
+    const AndroidNotificationDetails androidDetails = AndroidNotificationDetails(
+      'download_channel',
+      'Downloads',
+      channelDescription: 'Notifications for file downloads',
+      importance: Importance.high,
+      priority: Priority.high,
+      icon: '@mipmap/ic_launcher',
+    );
+
+    const NotificationDetails notifDetails = NotificationDetails(android: androidDetails);
+
+    await flutterLocalNotificationsPlugin.show(
+      0,
+      'Download Complete',
+      'Enquiry Excel downloaded to: $filePath',
+      notifDetails,
+      payload: filePath,
+    );
+  }
+
 
   Widget _buildInteractiveItem({
     required String label,

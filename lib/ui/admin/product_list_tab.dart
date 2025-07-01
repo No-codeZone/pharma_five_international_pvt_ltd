@@ -5,12 +5,14 @@ import 'package:device_info_plus/device_info_plus.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
+import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:fluttertoast/fluttertoast.dart';
 import 'package:lottie/lottie.dart';
 import 'package:pharma_five/service/api_service.dart';
 import 'package:pharma_five/ui/admin/product_details_screen.dart';
 import 'package:pharma_five/ui/admin/product_details_screen_admin.dart';
 import 'package:pharma_five/ui/admin/widget/bulk_upload_widget.dart';
+import 'package:share_plus/share_plus.dart';
 import 'package:super_tooltip/super_tooltip.dart';
 import '../../model/get_product_listing_response_model.dart';
 import '../../model/get_product_more_response_model.dart';
@@ -79,6 +81,7 @@ class _ProductListTabState extends State<ProductListTab> {
   String _activeSearchTerm = '';
   SuperTooltip? _tooltip;
   SuperTooltipController _tooltipController = SuperTooltipController();
+  final FlutterLocalNotificationsPlugin flutterLocalNotificationsPlugin = FlutterLocalNotificationsPlugin();
 
 
   @override
@@ -997,7 +1000,7 @@ class _ProductListTabState extends State<ProductListTab> {
     ); // Remove _isAddingProduct condition
   }
 
-  Future<void> _downloadExcelTemplateFile() async {
+  /*Future<void> _downloadExcelTemplateFile() async {
     setState(() => _isLoading = true);
 
     try {
@@ -1148,6 +1151,158 @@ class _ProductListTabState extends State<ProductListTab> {
     } finally {
       setState(() => _isLoading = false);
     }
+  }*/
+
+  Future<void> _downloadExcelTemplateFile() async {
+    setState(() => _isLoading = true);
+
+    try {
+      final hasPermission = await _requestFileOperationPermissions();
+      if (!hasPermission) {
+        setState(() => _isLoading = false);
+        return;
+      }
+
+      _showToast("Downloading Excel template...");
+
+      String? downloadPath;
+      final filename = "product_template.xlsx";
+
+      if (Platform.isAndroid) {
+        String? selectedDir = await FilePicker.platform.getDirectoryPath();
+        if (selectedDir == null) {
+          _showToast("Download cancelled by user.");
+          setState(() => _isLoading = false);
+          return;
+        }
+        downloadPath = "$selectedDir/$filename";
+      } else {
+        final directory = await getApplicationDocumentsDirectory();
+        downloadPath = "${directory.path}/$filename";
+      }
+
+      final url = Uri.parse("http://13.233.209.211:8080/api/product/download-template");
+      final response = await http.get(url).timeout(
+        const Duration(seconds: 30),
+        onTimeout: () => throw TimeoutException("The connection timed out."),
+      );
+
+      if (response.statusCode == 200) {
+        final file = File(downloadPath);
+        await file.writeAsBytes(response.bodyBytes);
+
+        if (Platform.isIOS) {
+          await Share.shareXFiles(
+            [XFile(downloadPath)],
+            text: 'Excel template downloaded. Choose where to save or share.',
+          );
+        } else {
+          _showToast("Template downloaded to: $downloadPath");
+          await _showAndroidDownloadNotification(downloadPath, 'Template Download Complete');
+        }
+      } else {
+        _showToast("Download failed: ${response.statusCode}", isError: true);
+      }
+
+    } on SocketException {
+      _showToast("Network error. Please check your internet.", isError: true);
+    } on TimeoutException {
+      _showToast("Download timed out. Please try again.", isError: true);
+    } catch (e) {
+      debugPrint("Download error: $e");
+      _showToast("Unexpected error: $e", isError: true);
+    } finally {
+      setState(() => _isLoading = false);
+    }
+  }
+
+  Future<void> _downloadExcelFile() async {
+    setState(() => _isLoading = true);
+
+    try {
+      final hasPermission = await _requestFileOperationPermissions();
+      if (!hasPermission) {
+        setState(() => _isLoading = false);
+        return;
+      }
+
+      _showToast("Downloading Excel file...");
+
+      String? downloadPath;
+      final filename = "product_list_${DateTime.now().millisecondsSinceEpoch}.xlsx";
+
+      if (Platform.isAndroid) {
+        String? selectedDir = await FilePicker.platform.getDirectoryPath();
+        if (selectedDir == null) {
+          _showToast("Download cancelled by user.");
+          setState(() => _isLoading = false);
+          return;
+        }
+        downloadPath = "$selectedDir/$filename";
+      } else {
+        final directory = await getApplicationDocumentsDirectory();
+        downloadPath = "${directory.path}/$filename";
+      }
+
+      final url = Uri.parse("http://13.233.209.211:8080/api/product/download");
+      final response = await http.get(url).timeout(
+        const Duration(seconds: 30),
+        onTimeout: () => throw TimeoutException("The connection timed out."),
+      );
+
+      if (response.statusCode == 200) {
+        final file = File(downloadPath);
+        await file.writeAsBytes(response.bodyBytes);
+
+        if (Platform.isIOS) {
+          await Share.shareXFiles(
+            [XFile(downloadPath)],
+            text: 'Excel file downloaded. Choose where to save or share.',
+          );
+        } else {
+          _showToast("Excel downloaded to: $downloadPath");
+          await _showAndroidDownloadNotification(downloadPath, 'Download Complete');
+        }
+
+      } else if (response.statusCode == 401 || response.statusCode == 403) {
+        _showToast("Authorization error. Please log in again.", isError: true);
+      } else if (response.statusCode >= 500) {
+        _showToast("Server error. Please try again later.", isError: true);
+      } else {
+        _showToast("Download failed: ${response.statusCode}", isError: true);
+      }
+
+    } on SocketException {
+      _showToast("Network error. Please check your internet.", isError: true);
+    } on TimeoutException {
+      _showToast("Download timed out. Please try again.", isError: true);
+    } catch (e) {
+      debugPrint("Download error: $e");
+      _showToast("Unexpected error: $e", isError: true);
+    } finally {
+      setState(() => _isLoading = false);
+    }
+  }
+
+  Future<void> _showAndroidDownloadNotification(String filePath, String title) async {
+    const AndroidNotificationDetails androidDetails = AndroidNotificationDetails(
+      'download_channel',
+      'Downloads',
+      channelDescription: 'Notifications for file downloads',
+      importance: Importance.high,
+      priority: Priority.high,
+      icon: '@mipmap/ic_launcher',
+    );
+
+    const NotificationDetails notifDetails = NotificationDetails(android: androidDetails);
+
+    await flutterLocalNotificationsPlugin.show(
+      0,
+      title,
+      'Saved to: $filePath',
+      notifDetails,
+      payload: filePath,
+    );
   }
 
   Widget _buildSearchError() {
