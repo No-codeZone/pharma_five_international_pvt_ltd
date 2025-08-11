@@ -57,23 +57,18 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
   Future<void> _navigateAfterDelay() async {
     try {
       await Future.delayed(const Duration(seconds: 3));
-
       bool isConnected = await InternetConnection().hasInternetAccess;
-
       // Retry logic until internet is available
       while (!isConnected) {
         _showToast("No internet connection. Retrying...", isError: true);
         await Future.delayed(const Duration(seconds: 5)); // Retry every 5 seconds
         isConnected = await InternetConnection().hasInternetAccess;
       }
-
       // Internet available, proceed
       await SharedPreferenceHelper.init();
-
       final isLoggedIn = await SharedPreferenceHelper.isLoggedIn();
       final role = await SharedPreferenceHelper.getUserType();
       final status = await SharedPreferenceHelper.getUserStatus();
-
       if (isLoggedIn) {
         if (role == 'admin') {
           Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => const AdminDashboardScreen()));
@@ -113,7 +108,6 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
           await SharedPreferenceHelper.clearSession();
         }
       }
-
       // Save the new installation ID for future launches
       await SharedPreferenceHelper.setInstallationId(newInstallationId);
     }

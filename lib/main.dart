@@ -5,11 +5,11 @@ import 'package:open_file/open_file.dart';
 import 'package:pharma_five/ui/splash_screen.dart';
 import 'helper/shared_preferences.dart';
 
-final FlutterLocalNotificationsPlugin flutterLocalNotificationsPlugin = FlutterLocalNotificationsPlugin();
+// final FlutterLocalNotificationsPlugin flutterLocalNotificationsPlugin = FlutterLocalNotificationsPlugin();
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  const AndroidInitializationSettings androidInit =
+  /*const AndroidInitializationSettings androidInit =
   AndroidInitializationSettings('@mipmap/ic_launcher');
 
   // ✅ No onDidReceiveLocalNotification here
@@ -33,7 +33,7 @@ void main() async {
     },
     // ✅ Optionally handle foreground notification taps on older iOS
     onDidReceiveBackgroundNotificationResponse: notificationTapBackground,
-  );
+  );*/
 
   await SystemChrome.setPreferredOrientations([
     DeviceOrientation.portraitUp,
@@ -45,36 +45,12 @@ void main() async {
 }
 
 /// If you need background response handler
-@pragma('vm:entry-point')
+/*@pragma('vm:entry-point')
 void notificationTapBackground(NotificationResponse response) {
   if (response.payload != null) {
     OpenFile.open(response.payload);
   }
-}
-
-// void main() async {
-//   WidgetsFlutterBinding.ensureInitialized();
-//
-//   const AndroidInitializationSettings androidInit = AndroidInitializationSettings('@mipmap/ic_launcher');
-//   const InitializationSettings initSettings = InitializationSettings(android: androidInit);
-//
-//   await flutterLocalNotificationsPlugin.initialize(initSettings,
-//       onDidReceiveNotificationResponse: (response) {
-//         if (response.payload != null) {
-//           OpenFile.open(response.payload);
-//         }
-//       }
-//   );
-//
-//   // ✅ Lock the app orientation to portrait only
-//   await SystemChrome.setPreferredOrientations([
-//     DeviceOrientation.portraitUp,
-//     DeviceOrientation.portraitDown,
-//   ]);
-//
-//   await SharedPreferenceHelper.init();
-//   runApp(const MyApp());
-// }
+}*/
 
 class MyApp extends StatelessWidget {
   const MyApp({super.key});

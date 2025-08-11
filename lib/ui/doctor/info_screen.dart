@@ -519,6 +519,8 @@ class _InfoScreenState extends State<InfoScreen>
             DilliBabuInformationCard(),
             const SizedBox(height: 24),
             SreekanthInformationCard(),
+            const SizedBox(height: 24),
+            RandipInformationCard(),
             const SizedBox(height: 30),
             Center(
               child: ElevatedButton.icon(
@@ -1190,6 +1192,109 @@ class _SreekanthInformationCardState extends State<SreekanthInformationCard> {
                     ),
                     const Text(
                       "Director", // Adjust title if necessary
+                      style: TextStyle(fontSize: 14, color: Colors.grey),
+                    ),
+                    GestureDetector(
+                      onTap: () async {
+                        final Uri phoneUri = Uri(scheme: 'tel', path: _phoneNumber);
+                        if (await canLaunchUrl(phoneUri)) {
+                          await launchUrl(phoneUri);
+                        }
+                      },
+                      child: Text(
+                        _phoneNumber,
+                        style: const TextStyle(
+                          fontSize: 14,
+                          color: Colors.blue,
+                          decoration: TextDecoration.underline,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          Text(
+            _fullText,
+            maxLines: _expanded ? null : 5,
+            overflow: _expanded ? TextOverflow.visible : TextOverflow.ellipsis,
+            style: const TextStyle(fontSize: 15, height: 1.6, color: Colors.black87),
+          ),
+          Align(
+            alignment: Alignment.centerRight,
+            child: TextButton(
+              onPressed: () => setState(() => _expanded = !_expanded),
+              child: Text(
+                _expanded ? "Read less" : "Read more",
+                style: const TextStyle(color: Color(0xff185794)),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildCard({required Widget child}) {
+    return Card(
+      elevation: 2,
+      color: Colors.white,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      margin: EdgeInsets.zero,
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: child,
+      ),
+    );
+  }
+}
+
+class RandipInformationCard extends StatefulWidget {
+  const RandipInformationCard({super.key});
+
+  @override
+  State<RandipInformationCard> createState() => _RandipInformationCardState();
+}
+
+class _RandipInformationCardState extends State<RandipInformationCard> {
+  bool _expanded = false;
+
+  static const String _fullText =
+      "Veteran Speciality Pharma sales and marketing executive with 3 decades in the industry worked with many renowned pharmaceutical giants."
+      "currently helping patients to obtain overseas medicines with proper documentations for prescription drugs thorough Name patient Import.patient friendly and has an exceptional track record of customer service.";
+
+  static const String _phoneNumber = "+919836456611";
+
+  @override
+  Widget build(BuildContext context) {
+    return _buildCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Profile row
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Image.asset(
+                'assets/images/randip_sanyal.jpeg',
+                width: 100,
+                height: 120,
+                fit: BoxFit.cover,
+              ),
+              const SizedBox(width: 42),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      "Randip sanyal",
+                      style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                    ),
+                    const Text(
+                      "Director \n(For East Zone only)", // Adjust title if necessary
                       style: TextStyle(fontSize: 14, color: Colors.grey),
                     ),
                     GestureDetector(

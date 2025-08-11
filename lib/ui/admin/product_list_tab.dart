@@ -155,19 +155,16 @@ class _ProductListTabState extends State<ProductListTab> {
   }
 
   Future<bool> _requestFileOperationPermissions() async {
-    // Check current connection first
     if (!_isConnected) {
       _showToast("No internet connection", isError: true);
       return false;
     }
 
-    // Platform-specific permission handling
     if (Platform.isAndroid) {
       return await _requestAndroidPermissions();
     } else if (Platform.isIOS) {
       return await _requestIOSPermissions();
     } else {
-      // Default fallback for other platforms
       _showToast("File operations may not be fully supported on this platform", isError: true);
       return true;
     }
@@ -178,64 +175,38 @@ class _ProductListTabState extends State<ProductListTab> {
     final androidInfo = await deviceInfo.androidInfo;
     final sdkInt = androidInfo.version.sdkInt;
 
-    // Android 13+ (API 33+)
+    // Android 13+ (API 33+) - NO PERMISSIONS NEEDED
     if (sdkInt >= 33) {
-      // Request READ_MEDIA_IMAGES for accessing media files
-      final photosStatus = await Permission.photos.request();
-      // Request READ_MEDIA_DOCUMENTS for importing Excel files
-      final documentsStatus = await Permission.mediaLibrary.request();
-
-      if (photosStatus.isGranted && documentsStatus.isGranted) {
-        return true;
-      }
-
-      if (photosStatus.isPermanentlyDenied || documentsStatus.isPermanentlyDenied) {
-        _showPermissionSettingsDialog(
-            "Media access required",
-            "Access to photos and documents is required for importing and exporting Excel files."
-        );
-        return false;
-      }
-
-      if (photosStatus.isDenied || documentsStatus.isDenied) {
-        _showToast("Media permissions are required for Excel operations", isError: true);
-        return false;
-      }
+      // Modern Android uses:
+      // 1. Storage Access Framework (SAF) via FilePicker - no permissions needed
+      // 2. App-specific directories - no permissions needed
+      // 3. Share intent - no permissions needed
+      return true;
     }
-    // Android 11-12 (API 30-32)
+    // Android 11-12 (API 30-32) - Only READ_EXTERNAL_STORAGE needed
     else if (sdkInt >= 30) {
-      // Try regular storage permission first
       final storageStatus = await Permission.storage.request();
 
       if (storageStatus.isGranted) {
-        // For Android 11+, we need MANAGE_EXTERNAL_STORAGE for full access
-        final manageStatus = await Permission.manageExternalStorage.request();
-        if (manageStatus.isGranted) {
-          return true;
-        }
-
-        // If basic storage permission is granted but not manage, we can still try
-        // to use more restricted access methods (scoped storage)
-        if (manageStatus.isPermanentlyDenied) {
-          _showPermissionSettingsDialog(
-              "Storage access limited",
-              "For full access to manage files, additional permissions are needed. " +
-                  "Excel files will be saved to app-specific folders.",
-              isWarningOnly: true
-          );
-        }
         return true;
       }
 
       if (storageStatus.isPermanentlyDenied) {
         _showPermissionSettingsDialog(
-            "Storage access required",
-            "Storage access is required for importing and exporting Excel files."
+            "Storage Access Required",
+            "Storage access is needed to save Excel files. Please enable it in app settings."
         );
         return false;
       }
+
+      if (storageStatus.isDenied) {
+        _showToast("Storage permission denied. File will be shared instead.", isError: true);
+        return false;
+      }
+
+      return storageStatus.isGranted;
     }
-    // Android 10 and below (API 29-)
+    // Android 10 and below (API 29 and below) - WRITE_EXTERNAL_STORAGE needed
     else {
       final status = await Permission.storage.request();
 
@@ -245,222 +216,262 @@ class _ProductListTabState extends State<ProductListTab> {
 
       if (status.isPermanentlyDenied) {
         _showPermissionSettingsDialog(
-            "Storage access required",
-            "Storage access is required for importing and exporting Excel files."
+            "Storage Access Required",
+            "Storage access is needed to save Excel files. Please enable it in app settings."
         );
         return false;
       }
-    }
 
-    _showToast("Storage permissions are needed for Excel operations", isError: true);
-    return false;
+      if (status.isDenied) {
+        _showToast("Storage permission denied. File will be shared instead.", isError: true);
+        return false;
+      }
+
+      return status.isGranted;
+    }
   }
 
   Future<bool> _requestIOSPermissions() async {
-    final documentsStatus = await Permission.storage.request();
-
-    if (documentsStatus.isGranted) {
-      return true;
-    }
-
-    if (documentsStatus.isPermanentlyDenied) {
-      _showPermissionSettingsDialog(
-          "Storage access required",
-          "This app needs permission to store Excel files in your device's Documents directory."
-      );
-      return false;
-    }
-
-    _showToast("Storage permission is required for Excel file operations.", isError: true);
-    return false;
+    // iOS doesn't need explicit permissions for document operations
+    // Files are saved to app's Documents directory which is accessible via Files app
+    return true;
   }
 
-  void _showPermissionSettingsDialog(String title, String message, {bool isWarningOnly = false}) {
-    final ThemeData theme = Theme.of(context);
-    final Color primaryColor = const Color(0xff185794);
+  Future<void> _handleSuccessfulDownload(List<int> fileBytes, String filename) async {
+    if (Platform.isAndroid) {
+      await _handleAndroidDownload(fileBytes, filename);
+    } else if (Platform.isIOS) {
+      await _handleIOSDownload(fileBytes, filename);
+    } else {
+      await _handleOtherPlatformDownload(fileBytes, filename);
+    }
+  }
 
-    showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (BuildContext context) => AlertDialog(
-        backgroundColor: Colors.white,
-        shape: RoundedRectangleBorder(
-          borderRadius: const BorderRadius.vertical(top: Radius.circular(10), bottom: Radius.circular(10)),
-          side: BorderSide(color: Colors.grey.shade300),
-        ),
-        title: Text(
-          title,
-          textAlign: TextAlign.center,
-          style: const TextStyle(
-            color: Color(0xff185794),
-            fontWeight: FontWeight.w600,
-            fontSize: 18,
-          ),
-        ),
-        content: SingleChildScrollView(
-          child: ListBody(
-            children: <Widget>[
-              Text(
-                message,
-                textAlign: TextAlign.center,
-                style: const TextStyle(
-                  fontSize: 16,
-                  color: Colors.black87,
-                  height: 1.4,
-                ),
-              ),
-              const SizedBox(height: 16),
-              if (!isWarningOnly)
-                Container(
-                  padding: const EdgeInsets.all(12),
-                  decoration: BoxDecoration(
-                    color: primaryColor.withOpacity(0.1),
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: Row(
-                    children: [
-                      Icon(
-                        Icons.info_outline,
-                        color: primaryColor,
-                        size: 20,
-                      ),
-                      const SizedBox(width: 10),
-                      Expanded(
-                        child: Text(
-                          'Please enable the required permissions in your device settings.',
-                          style: TextStyle(
-                            color: Colors.black87,
-                            fontSize: 13,
-                            height: 1.3,
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-            ],
-          ),
-        ),
-        actions: [
-          const SizedBox(height: 20),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              SizedBox(
-                height: 40,
-                child: ElevatedButton(
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.white,
-                    foregroundColor: primaryColor,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(10),
-                    ),
-                    side: BorderSide(color: primaryColor),
-                    elevation: 0,
-                  ),
-                  child: const Text(
-                    'Cancel',
-                    style: TextStyle(fontWeight: FontWeight.w500),
-                  ),
-                  onPressed: () => Navigator.of(context).pop(),
-                ),
-              ),
-              const Expanded(child: SizedBox(width: 10)),
-              if (!isWarningOnly)
-                SizedBox(
-                  height: 40,
-                  child: ElevatedButton(
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: primaryColor,
-                      foregroundColor: Colors.white,
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(10),
-                      ),
-                      elevation: 0,
-                    ),
-                    child: const Text(
-                      'Open Settings',
-                      style: TextStyle(fontWeight: FontWeight.w500),
-                    ),
-                    onPressed: () {
-                      Navigator.of(context).pop();
-                      openAppSettings();
-                    },
-                  ),
-                ),
-              if (isWarningOnly)
-                SizedBox(
-                  height: 40,
-                  child: ElevatedButton(
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: primaryColor,
-                      foregroundColor: Colors.white,
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(10),
-                      ),
-                      elevation: 0,
-                    ),
-                    child: const Text(
-                      'Continue Anyway',
-                      style: TextStyle(fontWeight: FontWeight.w500),
-                    ),
-                    onPressed: () {
-                      Navigator.of(context).pop();
-                    },
-                  ),
-                ),
-            ],
-          ),
-        ],
-        actionsPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-      ),
-    );
+  Future<void> _handleAndroidDownload(List<int> fileBytes, String filename) async {
+    final deviceInfo = DeviceInfoPlugin();
+    final androidInfo = await deviceInfo.androidInfo;
+    final sdkInt = androidInfo.version.sdkInt;
+
+    if (sdkInt >= 33) {
+      // Android 13+ - Use modern approach (no permissions needed)
+      await _handleModernAndroidDownload(fileBytes, filename);
+    } else {
+      // Android 12 and below - Check permissions first
+      final hasPermission = await Permission.storage.status;
+      if (hasPermission.isGranted) {
+        await _handleLegacyAndroidDownload(fileBytes, filename);
+      } else {
+        // No permission - use share as fallback
+        await _shareFileAsFallback(fileBytes, filename);
+      }
+    }
+  }
+
+  Future<void> _handleModernAndroidDownload(List<int> fileBytes, String filename) async {
+    try {
+      // Option 1: Let user choose where to save using Storage Access Framework
+      String? selectedDirectory = await FilePicker.platform.getDirectoryPath();
+
+      if (selectedDirectory != null) {
+        // Save to user-selected directory
+        final filePath = "$selectedDirectory/$filename";
+        final file = File(filePath);
+        await file.writeAsBytes(fileBytes);
+        _showToast("Excel file saved successfully to chosen location");
+      } else {
+        // User cancelled directory selection - use share as alternative
+        await _shareFileAsFallback(fileBytes, filename);
+      }
+    } catch (e) {
+      debugPrint("Modern Android download error: $e");
+      // Fallback to share if SAF fails
+      await _shareFileAsFallback(fileBytes, filename);
+    }
+  }
+
+  Future<void> _handleLegacyAndroidDownload(List<int> fileBytes, String filename) async {
+    try {
+      // Try to save to Downloads or app directory
+      final directory = await _getAppropriateDirectory();
+      if (directory != null) {
+        final filePath = "${directory.path}/$filename";
+        final file = File(filePath);
+        await file.writeAsBytes(fileBytes);
+        _showToast("Excel file saved to: ${directory.path}");
+      } else {
+        await _shareFileAsFallback(fileBytes, filename);
+      }
+    } catch (e) {
+      debugPrint("Legacy Android download error: $e");
+      await _shareFileAsFallback(fileBytes, filename);
+    }
   }
 
   Future<Directory?> _getAppropriateDirectory() async {
-    Directory? directory;
-
     try {
       if (Platform.isAndroid) {
         final deviceInfo = DeviceInfoPlugin();
         final androidInfo = await deviceInfo.androidInfo;
         final sdkInt = androidInfo.version.sdkInt;
 
-        if (sdkInt >= 30) {
-          // Android 11+ (API 30+)
-          final manageStatus = await Permission.manageExternalStorage.status;
-          if (manageStatus.isGranted) {
-            directory = Directory("/storage/emulated/0/Download");
-            if (!await directory.exists()) {
-              directory = await getExternalStorageDirectory();
+        if (sdkInt >= 33) {
+          // Android 13+ - Use app-specific external directory (no permissions needed)
+          final directory = await getExternalStorageDirectory();
+          if (directory != null) {
+            final downloadsDir = Directory('${directory.path}/Downloads');
+            if (!await downloadsDir.exists()) {
+              await downloadsDir.create(recursive: true);
             }
-          } else {
-            // Use app-specific external directory (scoped storage)
-            directory = await getExternalStorageDirectory();
+            return downloadsDir;
           }
+        } else if (sdkInt >= 30) {
+          // Android 11-12 - Try Downloads folder if permission granted
+          final permission = await Permission.storage.status;
+          if (permission.isGranted) {
+            final downloadsDir = Directory("/storage/emulated/0/Download");
+            if (await downloadsDir.exists()) {
+              return downloadsDir;
+            }
+          }
+          // Fallback to app-specific directory
+          return await getExternalStorageDirectory();
         } else {
-          // Android 10 and below
-          directory = Directory("/storage/emulated/0/Download");
-          if (!await directory.exists()) {
-            directory = await getExternalStorageDirectory();
+          // Android 10 and below - Try Downloads folder if permission granted
+          final permission = await Permission.storage.status;
+          if (permission.isGranted) {
+            final downloadsDir = Directory("/storage/emulated/0/Download");
+            if (await downloadsDir.exists()) {
+              return downloadsDir;
+            }
           }
+          // Fallback to app-specific directory
+          return await getExternalStorageDirectory();
         }
       } else if (Platform.isIOS) {
-        // ✅ Use Documents directory – visible in Files app, safe for .xlsx
-        directory = await getApplicationDocumentsDirectory();
-      } else {
-        // Fallback for other platforms
-        directory = await getApplicationDocumentsDirectory();
+        // iOS - Use Documents directory (visible in Files app)
+        return await getApplicationDocumentsDirectory();
       }
 
-      return directory;
+      // Fallback for other platforms
+      return await getApplicationDocumentsDirectory();
     } catch (e) {
-      // Catch any exception and fallback to application documents directory
       debugPrint("Directory access error: $e");
       return await getApplicationDocumentsDirectory();
     }
   }
 
+  Future<void> _shareFileAsFallback(List<int> fileBytes, String filename) async {
+    try {
+      // Save to app directory first
+      final directory = await getExternalStorageDirectory() ??
+          await getApplicationDocumentsDirectory();
+      final filePath = "${directory.path}/$filename";
+      final file = File(filePath);
+      await file.writeAsBytes(fileBytes);
+
+      // Share the file so user can save it anywhere
+      await Share.shareXFiles(
+        [XFile(filePath)],
+        text: 'Excel file ready - Choose where to save',
+      );
+
+      _showToast("Excel file ready to save. Choose your preferred location.");
+    } catch (e) {
+      debugPrint("Share fallback error: $e");
+      _showToast("Failed to prepare file for sharing", isError: true);
+    }
+  }
+
+  Future<void> _handleIOSDownload(List<int> fileBytes, String filename) async {
+    try {
+      final directory = await getApplicationDocumentsDirectory();
+      final filePath = "${directory.path}/$filename";
+      final file = File(filePath);
+      await file.writeAsBytes(fileBytes);
+
+      // iOS - Share the file so user can save to Files app or other locations
+      await Share.shareXFiles(
+        [XFile(filePath)],
+        text: 'Excel file downloaded. Choose where to save.',
+      );
+
+      _showToast("Excel file ready to save");
+    } catch (e) {
+      debugPrint("iOS download error: $e");
+      _showToast("Failed to prepare Excel file", isError: true);
+    }
+  }
+
+  Future<void> _handleOtherPlatformDownload(List<int> fileBytes, String filename) async {
+    try {
+      final directory = await getApplicationDocumentsDirectory();
+      final filePath = "${directory.path}/$filename";
+      final file = File(filePath);
+      await file.writeAsBytes(fileBytes);
+      _showToast("Excel file saved to: ${directory.path}");
+    } catch (e) {
+      debugPrint("Other platform download error: $e");
+      _showToast("Failed to save Excel file", isError: true);
+    }
+  }
+
+  void _handleDownloadError(int statusCode) {
+    switch (statusCode) {
+      case 401:
+        _showToast("Authentication required. Please log in again.", isError: true);
+        break;
+      case 403:
+        _showToast("Access forbidden. Check your permissions.", isError: true);
+        break;
+      case 404:
+        _showToast("Excel file not found on server.", isError: true);
+        break;
+      case 408:
+        _showToast("Request timeout. Please try again.", isError: true);
+        break;
+      case 500:
+        _showToast("Server error. Please try again later.", isError: true);
+        break;
+      case 502:
+        _showToast("Bad gateway. Server may be down.", isError: true);
+        break;
+      case 503:
+        _showToast("Service unavailable. Please try again later.", isError: true);
+        break;
+      default:
+        _showToast("Download failed with error code: $statusCode", isError: true);
+    }
+  }
+
+  void _setLoading(bool loading) {
+    _isLoading = loading;
+    // Call your setState here if this is in a StatefulWidget
+    // setState(() => _isLoading = loading);
+  }
+
+  void _showPermissionSettingsDialog(String title, String message) {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (BuildContext context) => AlertDialog(
+        title: Text(title),
+        content: Text(message),
+        actions: [
+          TextButton(
+            child: const Text('Cancel'),
+            onPressed: () => Navigator.of(context).pop(),
+          ),
+          TextButton(
+            child: const Text('Open Settings'),
+            onPressed: () {
+              Navigator.of(context).pop();
+              openAppSettings();
+            },
+          ),
+        ],
+      ),
+    );
+  }
   // 2️⃣ Search method
   Future<void> _searchProducts(String searchTerm, {int page = 0}) async {
     if (!_isConnected) {
@@ -523,124 +534,6 @@ class _ProductListTabState extends State<ProductListTab> {
     } finally {
       setState(() {
         _isSearchLoading = false;
-      });
-    }
-  }
-
-  Future<bool> _requestStoragePermission() async {
-    if (Platform.isAndroid) {
-      final deviceInfo = DeviceInfoPlugin();
-      final androidInfo = await deviceInfo.androidInfo;
-      final sdkInt = androidInfo.version.sdkInt;
-
-      if (sdkInt >= 33) {
-        // Android 13+ needs media-specific permissions instead of general storage
-        var status = await Permission.photos.request();
-        // For downloading in public directories like Downloads
-        var downloadStatus = await Permission.mediaLibrary.request();
-
-        if (status.isGranted && downloadStatus.isGranted) return true;
-
-        if (status.isPermanentlyDenied || downloadStatus.isPermanentlyDenied) {
-          _showPermissionPermanentlyDeniedDialog();
-          return false;
-        }
-
-        _showToast("Media permissions needed to download files", isError: true);
-        return false;
-      } else if (sdkInt >= 30) {
-        // Android 11-12 needs storage access + manage external storage
-        var status = await Permission.storage.request();
-
-        if (status.isGranted) {
-          // Try the more powerful permission
-          var manageStatus = await Permission.manageExternalStorage.request();
-          if (manageStatus.isGranted) return true;
-        }
-
-        if (status.isPermanentlyDenied) {
-          _showPermissionPermanentlyDeniedDialog();
-          return false;
-        }
-
-        _showToast("Storage permissions needed for Android 11+", isError: true);
-        return false;
-      } else {
-        // Android 10 and below just needs storage permission
-        var status = await Permission.storage.request();
-        if (status.isGranted) return true;
-
-        if (status.isPermanentlyDenied) {
-          _showPermissionPermanentlyDeniedDialog();
-          return false;
-        }
-
-        _showToast("Storage permission needed to download files", isError: true);
-        return false;
-      }
-    }
-
-    // For iOS or other platforms, we need photos permission
-    if (Platform.isIOS) {
-      var status = await Permission.photos.request();
-      if (status.isGranted) return true;
-
-      if (status.isPermanentlyDenied) {
-        _showPermissionPermanentlyDeniedDialog();
-        return false;
-      }
-
-      _showToast("Photos access needed to save files", isError: true);
-      return false;
-    }
-
-    // Default allow for other platforms
-    return true;
-  }
-
-  Future<void> _loadProductData({int page = 0}) async {
-    setState(() {
-      _isProductsLoading = true;
-      _errorMessage = '';
-    });
-
-    try {
-      final response = await ApiService().fetchPaginatedProducts(
-        index: page,
-        limit: _itemsPerPage,
-      );
-
-      if (response != null && response.getProducts != null) {
-        // Convert GetProducts to Products
-        List<Products> convertedProducts = response.getProducts!.map((getProduct) {
-          return Products(
-            serialNo: getProduct.serialNo,
-            medicineName: getProduct.medicineName,
-            genericName: getProduct.genericName,
-          );
-        }).toList();
-
-        setState(() {
-          _allProducts = convertedProducts;
-          _filteredProducts = convertedProducts;
-          _currentPage = page;
-          _totalProductCount = response.totalCount ?? 0;
-          _hasMore = ((page + 1) * _itemsPerPage) < _totalProductCount;
-          _isProductsLoading = false;
-        });
-      } else {
-        setState(() {
-          _isProductsLoading = false;
-          // _errorMessage = 'No products found.';
-          _filteredProducts = [];
-        });
-      }
-    } catch (e) {
-      debugPrint('Error loading product data: $e');
-      setState(() {
-        _isProductsLoading = false;
-        _errorMessage = 'Failed to load products. Please try again later.';
-        _filteredProducts = [];
       });
     }
   }
@@ -745,31 +638,6 @@ class _ProductListTabState extends State<ProductListTab> {
     );
   }
 
-  void _showPermissionPermanentlyDeniedDialog() {
-    showDialog(
-      context: context,
-      builder: (BuildContext context) => AlertDialog(
-        title: const Text('Permission Required'),
-        content: const Text(
-          'Storage permission is required to download files. Please enable it in app settings.',
-        ),
-        actions: <Widget>[
-          TextButton(
-            child: const Text('Cancel'),
-            onPressed: () => Navigator.of(context).pop(),
-          ),
-          TextButton(
-            child: const Text('Open Settings'),
-            onPressed: () {
-              Navigator.of(context).pop();
-              openAppSettings();
-            },
-          ),
-        ],
-      ),
-    );
-  }
-
   Future<void> loadProducts({int page = 0}) async {
     if (!_isConnected) {
       // _showToast("No internet connection", isError: true);
@@ -830,10 +698,23 @@ class _ProductListTabState extends State<ProductListTab> {
   Future<void> _pickAndUploadExcelFile() async {
     Navigator.of(context).pop(); // Close confirmation dialog
 
-    final hasPermission = await _requestFileOperationPermissions();
-    if (!hasPermission) return;
-
     try {
+      // Check if permissions are required (Android 12 and below)
+      bool needsPermission = false;
+      if (Platform.isAndroid) {
+        final deviceInfo = DeviceInfoPlugin();
+        final androidInfo = await deviceInfo.androidInfo;
+        needsPermission = androidInfo.version.sdkInt < 33;
+      }
+
+      if (needsPermission) {
+        final hasPermission = await _requestFileOperationPermissions();
+        if (!hasPermission) {
+          debugPrint("Permissions denied. Upload cancelled.");
+          return;
+        }
+      }
+
       FilePickerResult? result = await FilePicker.platform.pickFiles(
         type: FileType.custom,
         allowedExtensions: ['xlsx'],
@@ -842,6 +723,7 @@ class _ProductListTabState extends State<ProductListTab> {
       );
 
       if (result == null || result.files.single.path == null) return;
+
       final file = File(result.files.single.path!);
 
       if (!await file.exists()) {
@@ -855,7 +737,7 @@ class _ProductListTabState extends State<ProductListTab> {
         return;
       }
 
-      // Show loader
+      // Show uploading loader
       showDialog(
         context: context,
         barrierDismissible: false,
@@ -877,7 +759,7 @@ class _ProductListTabState extends State<ProductListTab> {
         },
       );
 
-      // Set 90s timeout
+      // Timeout handler (5 minutes)
       bool timedOut = false;
       final timer = Timer(const Duration(seconds: 300), () {
         timedOut = true;
@@ -901,19 +783,19 @@ class _ProductListTabState extends State<ProductListTab> {
 
       try {
         final response = await _apiService.uploadBulkProductList(file);
-        if (timer.isActive) timer.cancel(); // Cancel timeout if finished early
+        if (timer.isActive) timer.cancel();
         if (!mounted || timedOut) return;
 
         Navigator.of(context, rootNavigator: true).pop(); // Close loader
 
-        if (response != null && response.responseCode==200) {
-          print("Bulk upload response\t${response}");
-          print("Bulk upload result\t${result}");
+        if (response != null && response.responseCode == 200) {
+          print("Bulk upload response: $response");
           _showToast(response.responseMessage.toString());
           await loadProducts(page: _currentProductPage);
         } else {
           _showToast(response?.responseMessage.toString() ?? "Upload failed", isError: true);
         }
+
       } catch (e) {
         if (timer.isActive) timer.cancel();
         if (!mounted || timedOut) return;
@@ -921,14 +803,9 @@ class _ProductListTabState extends State<ProductListTab> {
         Navigator.of(context, rootNavigator: true).pop(); // Close loader
         _showToast("Upload failed: ${e.toString()}", isError: true);
       }
+
     } catch (e) {
       _showToast("Error: ${e.toString()}", isError: true);
-    }
-  }
-
-  void _closeLoaderDialogIfOpen() {
-    if (Navigator.canPop(context)) {
-      Navigator.of(context, rootNavigator: true).pop();
     }
   }
 
@@ -1000,179 +877,39 @@ class _ProductListTabState extends State<ProductListTab> {
     ); // Remove _isAddingProduct condition
   }
 
-  /*Future<void> _downloadExcelTemplateFile() async {
-    setState(() => _isLoading = true);
-
-    try {
-      final hasPermission = await _requestFileOperationPermissions();
-      if (!hasPermission) {
-        setState(() => _isLoading = false);
-        return;
-      }
-
-      _showToast("Downloading Excel template...");
-
-      final directory = await _getAppropriateDirectory();
-      if (directory == null) {
-        _showToast("Failed to access storage directory", isError: true);
-        setState(() => _isLoading = false);
-        return;
-      }
-
-      final url = Uri.parse("http://13.233.209.211:8080/api/product/download-template");
-      final filename = "product_template.xlsx";
-      final downloadPath = "${directory.path}/$filename";
-
-      final response = await http.get(url).timeout(
-        const Duration(seconds: 30),
-        onTimeout: () => throw TimeoutException("The connection timed out."),
-      );
-
-      if (response.statusCode == 200) {
-        final file = File(downloadPath);
-        await file.writeAsBytes(response.bodyBytes);
-
-        if (Platform.isIOS) {
-          try {
-            await file.setLastModified(DateTime.now());
-          } catch (e) {
-            debugPrint("iOS file tag error: $e");
-          }
-        }
-
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text("Template downloaded to: $downloadPath"),
-              backgroundColor: const Color(0xff185794),
-              duration: const Duration(seconds: 4),
-              action: SnackBarAction(
-                label: "Open",
-                textColor: Colors.white,
-                onPressed: () async {
-                  try {
-                    await OpenFile.open(downloadPath);
-                  } catch (e) {
-                    _showToast("Unable to open file: $e", isError: true);
-                  }
-                },
-              ),
-            ),
-          );
-        }
-      } else {
-        _showToast("Download failed: ${response.statusCode}", isError: true);
-      }
-    } on SocketException {
-      _showToast("Network error. Please check your internet.", isError: true);
-    } on TimeoutException {
-      _showToast("Download timed out. Please try again.", isError: true);
-    } catch (e) {
-      debugPrint("Download error: $e");
-      _showToast("Unexpected error: $e", isError: true);
-    } finally {
-      setState(() => _isLoading = false);
-    }
-  }
-
-  Future<void> _downloadExcelFile() async {
-    setState(() => _isLoading = true);
-
-    try {
-      final hasPermission = await _requestFileOperationPermissions();
-      if (!hasPermission) {
-        setState(() => _isLoading = false);
-        return;
-      }
-
-      _showToast("Downloading Excel file...");
-
-      final directory = await _getAppropriateDirectory();
-      if (directory == null) {
-        _showToast("Failed to access storage directory", isError: true);
-        setState(() => _isLoading = false);
-        return;
-      }
-
-      final url = Uri.parse("http://13.233.209.211:8080/api/product/download");
-      final filename = "product_list_${DateTime.now().millisecondsSinceEpoch}.xlsx";
-      final downloadPath = "${directory.path}/$filename";
-      final response = await http.get(url).timeout(
-        const Duration(seconds: 30),
-        onTimeout: () => throw TimeoutException("The connection timed out."),
-      );
-
-      if (response.statusCode == 200) {
-        final file = File(downloadPath);
-        await file.writeAsBytes(response.bodyBytes);
-
-        if (Platform.isIOS) {
-          try {
-            await file.setLastModified(DateTime.now());
-          } catch (e) {
-            debugPrint("iOS file tag error: $e");
-          }
-        }
-
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text("Excel downloaded to: $downloadPath"),
-              backgroundColor: Color(0xff185794),
-              duration: const Duration(seconds: 4),
-              action: SnackBarAction(
-                label: "Open",
-                textColor: Colors.white,
-                onPressed: () async {
-                  try {
-                    await OpenFile.open(downloadPath);
-                  } catch (e) {
-                    _showToast("Unable to open file: $e", isError: true);
-                  }
-                },
-              ),
-            ),
-          );
-        }
-      } else if (response.statusCode == 401 || response.statusCode == 403) {
-        _showToast("Authorization error. Please log in again.", isError: true);
-      } else if (response.statusCode >= 500) {
-        _showToast("Server error. Please try again later.", isError: true);
-      } else {
-        _showToast("Download failed: ${response.statusCode}", isError: true);
-      }
-    } on SocketException {
-      _showToast("Network error. Please check your internet.", isError: true);
-    } on TimeoutException {
-      _showToast("Download timed out. Please try again.", isError: true);
-    } catch (e) {
-      debugPrint("Download error: $e");
-      _showToast("Unexpected error: $e", isError: true);
-    } finally {
-      setState(() => _isLoading = false);
-    }
-  }*/
 
   Future<void> _downloadExcelTemplateFile() async {
-    setState(() => _isLoading = true);
+    if (_isLoading) return;
 
     try {
-      final hasPermission = await _requestFileOperationPermissions();
-      if (!hasPermission) {
-        setState(() => _isLoading = false);
-        return;
+      setState(() => _isLoading = true);
+
+      // Check Android version to determine if permissions are needed
+      bool needsPermission = false;
+      if (Platform.isAndroid) {
+        final deviceInfo = DeviceInfoPlugin();
+        final androidInfo = await deviceInfo.androidInfo;
+        needsPermission = androidInfo.version.sdkInt < 33;
       }
 
-      _showToast("Downloading Excel template...");
+      // Request permission only if needed (Android 12 and below)
+      if (needsPermission) {
+        final hasPermission = await _requestFileOperationPermissions();
+        if (!hasPermission) {
+          debugPrint("Permissions denied, will use share functionality");
+          // Continue without permission (fallback with share)
+        }
+      }
 
-      String? downloadPath;
+      _showToast("Preparing Excel template...");
+
       final filename = "product_template.xlsx";
+      String? downloadPath;
 
       if (Platform.isAndroid) {
-        String? selectedDir = await FilePicker.platform.getDirectoryPath();
+        final selectedDir = await FilePicker.platform.getDirectoryPath();
         if (selectedDir == null) {
           _showToast("Download cancelled by user.");
-          setState(() => _isLoading = false);
           return;
         }
         downloadPath = "$selectedDir/$filename";
@@ -1182,6 +919,7 @@ class _ProductListTabState extends State<ProductListTab> {
       }
 
       final url = Uri.parse("http://13.233.209.211:8080/api/product/download-template");
+
       final response = await http.get(url).timeout(
         const Duration(seconds: 30),
         onTimeout: () => throw TimeoutException("The connection timed out."),
@@ -1196,10 +934,11 @@ class _ProductListTabState extends State<ProductListTab> {
             [XFile(downloadPath)],
             text: 'Excel template downloaded. Choose where to save or share.',
           );
-        } else {
+        } else if (Platform.isAndroid) {
           _showToast("Template downloaded to: $downloadPath");
-          await _showAndroidDownloadNotification(downloadPath, 'Template Download Complete');
+          // await _showAndroidDownloadNotification(downloadPath, 'Template Download Complete');
         }
+
       } else {
         _showToast("Download failed: ${response.statusCode}", isError: true);
       }
@@ -1217,25 +956,37 @@ class _ProductListTabState extends State<ProductListTab> {
   }
 
   Future<void> _downloadExcelFile() async {
-    setState(() => _isLoading = true);
+    if (_isLoading) return;
 
     try {
-      final hasPermission = await _requestFileOperationPermissions();
-      if (!hasPermission) {
-        setState(() => _isLoading = false);
-        return;
+      setState(() => _isLoading = true);
+
+      // Check if permission is required (Android 12 and below)
+      bool needsPermission = false;
+      if (Platform.isAndroid) {
+        final deviceInfo = DeviceInfoPlugin();
+        final androidInfo = await deviceInfo.androidInfo;
+        needsPermission = androidInfo.version.sdkInt < 33;
       }
 
-      _showToast("Downloading Excel file...");
+      // Request permission only if needed
+      if (needsPermission) {
+        final hasPermission = await _requestFileOperationPermissions();
+        if (!hasPermission) {
+          debugPrint("Permissions denied, will use share functionality");
+          // Proceed using fallback (e.g., share)
+        }
+      }
 
-      String? downloadPath;
+      _showToast("Preparing Excel file...");
+
       final filename = "product_list_${DateTime.now().millisecondsSinceEpoch}.xlsx";
+      String? downloadPath;
 
       if (Platform.isAndroid) {
-        String? selectedDir = await FilePicker.platform.getDirectoryPath();
+        final selectedDir = await FilePicker.platform.getDirectoryPath();
         if (selectedDir == null) {
           _showToast("Download cancelled by user.");
-          setState(() => _isLoading = false);
           return;
         }
         downloadPath = "$selectedDir/$filename";
@@ -1245,6 +996,7 @@ class _ProductListTabState extends State<ProductListTab> {
       }
 
       final url = Uri.parse("http://13.233.209.211:8080/api/product/download");
+
       final response = await http.get(url).timeout(
         const Duration(seconds: 30),
         onTimeout: () => throw TimeoutException("The connection timed out."),
@@ -1259,9 +1011,9 @@ class _ProductListTabState extends State<ProductListTab> {
             [XFile(downloadPath)],
             text: 'Excel file downloaded. Choose where to save or share.',
           );
-        } else {
+        } else if (Platform.isAndroid) {
           _showToast("Excel downloaded to: $downloadPath");
-          await _showAndroidDownloadNotification(downloadPath, 'Download Complete');
+          // await _showAndroidDownloadNotification(downloadPath, 'Download Complete');
         }
 
       } else if (response.statusCode == 401 || response.statusCode == 403) {
@@ -1283,6 +1035,7 @@ class _ProductListTabState extends State<ProductListTab> {
       setState(() => _isLoading = false);
     }
   }
+
 
   Future<void> _showAndroidDownloadNotification(String filePath, String title) async {
     const AndroidNotificationDetails androidDetails = AndroidNotificationDetails(

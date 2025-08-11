@@ -2,7 +2,6 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'dart:math';
-
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:device_info_plus/device_info_plus.dart';
 import 'package:file_picker/file_picker.dart';
@@ -12,7 +11,6 @@ import 'package:fluttertoast/fluttertoast.dart';
 import 'package:http/http.dart' as http;
 import 'package:intl/intl.dart';
 import 'package:lottie/lottie.dart';
-import 'package:open_file/open_file.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:share_plus/share_plus.dart';
@@ -315,264 +313,185 @@ class _EnquiryTabState extends State<EnquiryTab> {
     );
   }
 
-  Future<bool> _requestFileOperationPermissions() async {
-    // Check current connection first
-    if (!_isConnected) {
-      _showToast("No internet connection", isError: true);
-      return false;
-    }
-
-    // Platform-specific permission handling
+  Future<void> _handleSuccessfulDownload(List<int> fileBytes, String filename) async {
     if (Platform.isAndroid) {
-      return await _requestAndroidPermissions();
+      await _handleAndroidDownload(fileBytes, filename);
     } else if (Platform.isIOS) {
-      return await _requestIOSPermissions();
+      await _handleIOSDownload(fileBytes, filename);
     } else {
-      // Default fallback for other platforms
-      _showToast("File operations may not be fully supported on this platform",
-          isError: true);
-      return true;
+      await _handleOtherPlatformDownload(fileBytes, filename);
     }
   }
 
-  Future<bool> _requestAndroidPermissions() async {
+  Future<void> _handleAndroidDownload(List<int> fileBytes, String filename) async {
     final deviceInfo = DeviceInfoPlugin();
     final androidInfo = await deviceInfo.androidInfo;
     final sdkInt = androidInfo.version.sdkInt;
 
-    // Android 13+ (API 33+)
     if (sdkInt >= 33) {
-      // Request READ_MEDIA_IMAGES for accessing media files
-      final photosStatus = await Permission.photos.request();
-      // Request READ_MEDIA_DOCUMENTS for importing Excel files
-      final documentsStatus = await Permission.mediaLibrary.request();
-
-      if (photosStatus.isGranted && documentsStatus.isGranted) {
-        return true;
-      }
-
-      if (photosStatus.isPermanentlyDenied ||
-          documentsStatus.isPermanentlyDenied) {
-        _showPermissionSettingsDialog("Media access required",
-            "Access to photos and documents is required for importing and exporting Excel files.");
-        return false;
-      }
-
-      if (photosStatus.isDenied || documentsStatus.isDenied) {
-        _showToast("Media permissions are required for Excel operations",
-            isError: true);
-        return false;
+      // Android 13+ - Use modern approach (no permissions needed)
+      await _handleModernAndroidDownload(fileBytes, filename);
+    } else {
+      // Android 12 and below - Check permissions first
+      final hasPermission = await Permission.storage.status;
+      if (hasPermission.isGranted) {
+        await _handleLegacyAndroidDownload(fileBytes, filename);
+      } else {
+        // No permission - use share as fallback
+        await _shareFileAsFallback(fileBytes, filename);
       }
     }
-    // Android 11-12 (API 30-32)
-    else if (sdkInt >= 30) {
-      // Try regular storage permission first
-      final storageStatus = await Permission.storage.request();
-
-      if (storageStatus.isGranted) {
-        // For Android 11+, we need MANAGE_EXTERNAL_STORAGE for full access
-        final manageStatus = await Permission.manageExternalStorage.request();
-        if (manageStatus.isGranted) {
-          return true;
-        }
-
-        // If basic storage permission is granted but not manage, we can still try
-        // to use more restricted access methods (scoped storage)
-        if (manageStatus.isPermanentlyDenied) {
-          _showPermissionSettingsDialog(
-              "Storage access limited",
-              "For full access to manage files, additional permissions are needed. " +
-                  "Excel files will be saved to app-specific folders.",
-              isWarningOnly: true);
-        }
-        return true;
-      }
-
-      if (storageStatus.isPermanentlyDenied) {
-        _showPermissionSettingsDialog("Storage access required",
-            "Storage access is required for importing and exporting Excel files.");
-        return false;
-      }
-    }
-    // Android 10 and below (API 29-)
-    else {
-      final status = await Permission.storage.request();
-
-      if (status.isGranted) {
-        return true;
-      }
-
-      if (status.isPermanentlyDenied) {
-        _showPermissionSettingsDialog("Storage access required",
-            "Storage access is required for importing and exporting Excel files.");
-        return false;
-      }
-    }
-
-    _showToast("Storage permissions are needed for Excel operations",
-        isError: true);
-    return false;
   }
 
-  Future<bool> _requestIOSPermissions() async {
-    final documentsStatus = await Permission.storage.request();
+  Future<void> _handleModernAndroidDownload(List<int> fileBytes, String filename) async {
+    try {
+      // Option 1: Let user choose where to save using Storage Access Framework
+      String? selectedDirectory = await FilePicker.platform.getDirectoryPath();
 
-    if (documentsStatus.isGranted) {
-      return true;
+      if (selectedDirectory != null) {
+        // Save to user-selected directory
+        final filePath = "$selectedDirectory/$filename";
+        final file = File(filePath);
+        await file.writeAsBytes(fileBytes);
+        _showToast("Excel file saved successfully to chosen location");
+      } else {
+        // User cancelled directory selection - use share as alternative
+        await _shareFileAsFallback(fileBytes, filename);
+      }
+    } catch (e) {
+      debugPrint("Modern Android download error: $e");
+      // Fallback to share if SAF fails
+      await _shareFileAsFallback(fileBytes, filename);
     }
-
-    if (documentsStatus.isPermanentlyDenied) {
-      _showPermissionSettingsDialog("Storage access required",
-          "This app needs permission to store Excel files in your device's Documents directory.");
-      return false;
-    }
-
-    _showToast("Storage permission is required for Excel file operations.",
-        isError: true);
-    return false;
   }
 
-  void _showPermissionSettingsDialog(String title, String message,
-      {bool isWarningOnly = false}) {
-    final ThemeData theme = Theme.of(context);
-    final Color primaryColor = const Color(0xff185794);
+  Future<void> _handleLegacyAndroidDownload(List<int> fileBytes, String filename) async {
+    try {
+      // Try to save to Downloads or app directory
+      final directory = await _getAppropriateDirectory();
+      if (directory != null) {
+        final filePath = "${directory.path}/$filename";
+        final file = File(filePath);
+        await file.writeAsBytes(fileBytes);
+        _showToast("Excel file saved to: ${directory.path}");
+      } else {
+        await _shareFileAsFallback(fileBytes, filename);
+      }
+    } catch (e) {
+      debugPrint("Legacy Android download error: $e");
+      await _shareFileAsFallback(fileBytes, filename);
+    }
+  }
 
+  Future<void> _shareFileAsFallback(List<int> fileBytes, String filename) async {
+    try {
+      // Save to app directory first
+      final directory = await getExternalStorageDirectory() ??
+          await getApplicationDocumentsDirectory();
+      final filePath = "${directory.path}/$filename";
+      final file = File(filePath);
+      await file.writeAsBytes(fileBytes);
+
+      // Share the file so user can save it anywhere
+      await Share.shareXFiles(
+        [XFile(filePath)],
+        text: 'Excel file ready - Choose where to save',
+      );
+
+      _showToast("Excel file ready to save. Choose your preferred location.");
+    } catch (e) {
+      debugPrint("Share fallback error: $e");
+      _showToast("Failed to prepare file for sharing", isError: true);
+    }
+  }
+
+  Future<void> _handleIOSDownload(List<int> fileBytes, String filename) async {
+    try {
+      final directory = await getApplicationDocumentsDirectory();
+      final filePath = "${directory.path}/$filename";
+      final file = File(filePath);
+      await file.writeAsBytes(fileBytes);
+
+      // iOS - Share the file so user can save to Files app or other locations
+      await Share.shareXFiles(
+        [XFile(filePath)],
+        text: 'Excel file downloaded. Choose where to save.',
+      );
+
+      _showToast("Excel file ready to save");
+    } catch (e) {
+      debugPrint("iOS download error: $e");
+      _showToast("Failed to prepare Excel file", isError: true);
+    }
+  }
+
+  Future<void> _handleOtherPlatformDownload(List<int> fileBytes, String filename) async {
+    try {
+      final directory = await getApplicationDocumentsDirectory();
+      final filePath = "${directory.path}/$filename";
+      final file = File(filePath);
+      await file.writeAsBytes(fileBytes);
+      _showToast("Excel file saved to: ${directory.path}");
+    } catch (e) {
+      debugPrint("Other platform download error: $e");
+      _showToast("Failed to save Excel file", isError: true);
+    }
+  }
+
+  void _handleDownloadError(int statusCode) {
+    switch (statusCode) {
+      case 401:
+        _showToast("Authentication required. Please log in again.", isError: true);
+        break;
+      case 403:
+        _showToast("Access forbidden. Check your permissions.", isError: true);
+        break;
+      case 404:
+        _showToast("Excel file not found on server.", isError: true);
+        break;
+      case 408:
+        _showToast("Request timeout. Please try again.", isError: true);
+        break;
+      case 500:
+        _showToast("Server error. Please try again later.", isError: true);
+        break;
+      case 502:
+        _showToast("Bad gateway. Server may be down.", isError: true);
+        break;
+      case 503:
+        _showToast("Service unavailable. Please try again later.", isError: true);
+        break;
+      default:
+        _showToast("Download failed with error code: $statusCode", isError: true);
+    }
+  }
+
+  void _setLoading(bool loading) {
+    _isLoading = loading;
+    // Call your setState here if this is in a StatefulWidget
+    // setState(() => _isLoading = loading);
+  }
+
+  void _showPermissionSettingsDialog(String title, String message) {
     showDialog(
       context: context,
       barrierDismissible: false,
       builder: (BuildContext context) => AlertDialog(
-        backgroundColor: Colors.white,
-        shape: RoundedRectangleBorder(
-          borderRadius: const BorderRadius.vertical(
-              top: Radius.circular(10), bottom: Radius.circular(10)),
-          side: BorderSide(color: Colors.grey.shade300),
-        ),
-        title: Text(
-          title,
-          textAlign: TextAlign.center,
-          style: const TextStyle(
-            color: Color(0xff185794),
-            fontWeight: FontWeight.w600,
-            fontSize: 18,
-          ),
-        ),
-        content: SingleChildScrollView(
-          child: ListBody(
-            children: <Widget>[
-              Text(
-                message,
-                textAlign: TextAlign.center,
-                style: const TextStyle(
-                  fontSize: 16,
-                  color: Colors.black87,
-                  height: 1.4,
-                ),
-              ),
-              const SizedBox(height: 16),
-              if (!isWarningOnly)
-                Container(
-                  padding: const EdgeInsets.all(12),
-                  decoration: BoxDecoration(
-                    color: primaryColor.withOpacity(0.1),
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: Row(
-                    children: [
-                      Icon(
-                        Icons.info_outline,
-                        color: primaryColor,
-                        size: 20,
-                      ),
-                      const SizedBox(width: 10),
-                      Expanded(
-                        child: Text(
-                          'Please enable the required permissions in your device settings.',
-                          style: TextStyle(
-                            color: Colors.black87,
-                            fontSize: 13,
-                            height: 1.3,
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-            ],
-          ),
-        ),
+        title: Text(title),
+        content: Text(message),
         actions: [
-          const SizedBox(height: 20),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              SizedBox(
-                height: 40,
-                child: ElevatedButton(
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.white,
-                    foregroundColor: primaryColor,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(10),
-                    ),
-                    side: BorderSide(color: primaryColor),
-                    elevation: 0,
-                  ),
-                  child: const Text(
-                    'Cancel',
-                    style: TextStyle(fontWeight: FontWeight.w500),
-                  ),
-                  onPressed: () => Navigator.of(context).pop(),
-                ),
-              ),
-              const Expanded(child: SizedBox(width: 10)),
-              if (!isWarningOnly)
-                SizedBox(
-                  height: 40,
-                  child: ElevatedButton(
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: primaryColor,
-                      foregroundColor: Colors.white,
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(10),
-                      ),
-                      elevation: 0,
-                    ),
-                    child: const Text(
-                      'Open Settings',
-                      style: TextStyle(fontWeight: FontWeight.w500),
-                    ),
-                    onPressed: () {
-                      Navigator.of(context).pop();
-                      openAppSettings();
-                    },
-                  ),
-                ),
-              if (isWarningOnly)
-                SizedBox(
-                  height: 40,
-                  child: ElevatedButton(
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: primaryColor,
-                      foregroundColor: Colors.white,
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(10),
-                      ),
-                      elevation: 0,
-                    ),
-                    child: const Text(
-                      'Continue Anyway',
-                      style: TextStyle(fontWeight: FontWeight.w500),
-                    ),
-                    onPressed: () {
-                      Navigator.of(context).pop();
-                    },
-                  ),
-                ),
-            ],
+          TextButton(
+            child: const Text('Cancel'),
+            onPressed: () => Navigator.of(context).pop(),
+          ),
+          TextButton(
+            child: const Text('Open Settings'),
+            onPressed: () {
+              Navigator.of(context).pop();
+              openAppSettings();
+            },
           ),
         ],
-        actionsPadding:
-            const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
       ),
     );
   }
@@ -820,31 +739,40 @@ class _EnquiryTabState extends State<EnquiryTab> {
   }*/
 
   Future<void> _downloadEnquiryExcelFile() async {
-    setState(() => _isLoading = true);
+    if (_isLoading) return;
 
     try {
-      final hasPermission = await _requestFileOperationPermissions();
-      if (!hasPermission) {
-        setState(() => _isLoading = false);
-        return;
+      setState(() => _isLoading = true);
+
+      // Check if permissions are needed (Android 12 and below)
+      bool needsPermission = false;
+      if (Platform.isAndroid) {
+        final deviceInfo = DeviceInfoPlugin();
+        final androidInfo = await deviceInfo.androidInfo;
+        needsPermission = androidInfo.version.sdkInt < 33;
       }
 
-      _showToast("Downloading Excel file...");
+      // Request permissions only if needed
+      if (needsPermission) {
+        final hasPermission = await _requestFileOperationPermissions();
+        if (!hasPermission) {
+          debugPrint("Permissions denied, will use share functionality");
+          // Continue to download & use share as fallback
+        }
+      }
 
-      String? downloadPath;
+      _showToast("Preparing Excel file...");
+
       final filename = "enquiry_list_${DateTime.now().millisecondsSinceEpoch}.xlsx";
+      String? downloadPath;
 
       if (Platform.isAndroid) {
-        String? selectedDir = await FilePicker.platform.getDirectoryPath();
+        final selectedDir = await FilePicker.platform.getDirectoryPath();
         if (selectedDir == null) {
           _showToast("Download cancelled by user.");
-          setState(() => _isLoading = false);
           return;
         }
         downloadPath = "$selectedDir/$filename";
-      } else if (Platform.isIOS) {
-        final directory = await getApplicationDocumentsDirectory();
-        downloadPath = "${directory.path}/$filename";
       } else {
         final directory = await getApplicationDocumentsDirectory();
         downloadPath = "${directory.path}/$filename";
@@ -872,10 +800,9 @@ class _EnquiryTabState extends State<EnquiryTab> {
             [XFile(downloadPath)],
             text: 'Enquiry Excel downloaded. Choose where to save or share.',
           );
-
         } else if (Platform.isAndroid) {
           _showToast("Excel downloaded to: $downloadPath");
-          await _showAndroidDownloadNotification(downloadPath);
+          // await _showAndroidDownloadNotification(downloadPath);
         }
 
       } else if (response.statusCode == 401 || response.statusCode == 403) {
@@ -885,6 +812,7 @@ class _EnquiryTabState extends State<EnquiryTab> {
       } else {
         _showToast("Download failed: ${response.statusCode}", isError: true);
       }
+
     } on SocketException {
       _showToast("Network error. Please check your internet.", isError: true);
     } on TimeoutException {
@@ -918,6 +846,88 @@ class _EnquiryTabState extends State<EnquiryTab> {
     );
   }
 
+  Future<bool> _requestFileOperationPermissions() async {
+    if (!_isConnected) {
+      _showToast("No internet connection", isError: true);
+      return false;
+    }
+
+    if (Platform.isAndroid) {
+      return await _requestAndroidPermissions();
+    } else if (Platform.isIOS) {
+      return await _requestIOSPermissions();
+    } else {
+      _showToast("File operations may not be fully supported on this platform", isError: true);
+      return true;
+    }
+  }
+
+  Future<bool> _requestAndroidPermissions() async {
+    final deviceInfo = DeviceInfoPlugin();
+    final androidInfo = await deviceInfo.androidInfo;
+    final sdkInt = androidInfo.version.sdkInt;
+
+    // Android 13+ (API 33+) - NO PERMISSIONS NEEDED
+    if (sdkInt >= 33) {
+      // Modern Android uses:
+      // 1. Storage Access Framework (SAF) via FilePicker - no permissions needed
+      // 2. App-specific directories - no permissions needed
+      // 3. Share intent - no permissions needed
+      return true;
+    }
+    // Android 11-12 (API 30-32) - Only READ_EXTERNAL_STORAGE needed
+    else if (sdkInt >= 30) {
+      final storageStatus = await Permission.storage.request();
+
+      if (storageStatus.isGranted) {
+        return true;
+      }
+
+      if (storageStatus.isPermanentlyDenied) {
+        _showPermissionSettingsDialog(
+            "Storage Access Required",
+            "Storage access is needed to save Excel files. Please enable it in app settings."
+        );
+        return false;
+      }
+
+      if (storageStatus.isDenied) {
+        _showToast("Storage permission denied. File will be shared instead.", isError: true);
+        return false;
+      }
+
+      return storageStatus.isGranted;
+    }
+    // Android 10 and below (API 29 and below) - WRITE_EXTERNAL_STORAGE needed
+    else {
+      final status = await Permission.storage.request();
+
+      if (status.isGranted) {
+        return true;
+      }
+
+      if (status.isPermanentlyDenied) {
+        _showPermissionSettingsDialog(
+            "Storage Access Required",
+            "Storage access is needed to save Excel files. Please enable it in app settings."
+        );
+        return false;
+      }
+
+      if (status.isDenied) {
+        _showToast("Storage permission denied. File will be shared instead.", isError: true);
+        return false;
+      }
+
+      return status.isGranted;
+    }
+  }
+
+  Future<bool> _requestIOSPermissions() async {
+    // iOS doesn't need explicit permissions for document operations
+    // Files are saved to app's Documents directory which is accessible via Files app
+    return true;
+  }
 
   Widget _buildInteractiveItem({
     required String label,
